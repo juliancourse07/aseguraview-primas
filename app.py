@@ -24,7 +24,7 @@ from modelos.forecast_engine import ForecastEngine
 from modelos.fianzas_adjuster import FianzasAdjuster
 from modelos.budget_2026 import Budget2026Generator
 
-# Components - CORREGIDO: 'componentes' (minúscula, sin acento)
+# Components
 from componentes.sidebar import render_sidebar
 from componentes.tables import df_to_html
 from componentes.charts import render_forecast_chart
@@ -173,6 +173,178 @@ with tabs[1]:
         st.warning("No hay datos con los filtros seleccionados")
         st.stop()
     
+    # ==================== VISTA DEL RESUMEN ====================
+    st.markdown("### Vista del Resumen")
+    
+    # Radio buttons para seleccionar vista
+    col_radio1, col_radio2, col_radio3 = st.columns(3)
+    with col_radio1:
+        vista_mes = st.radio("", ["Mes", "Año", "Acumulado Mes"], horizontal=False, index=0, key="vista_tipo")
+    
+    # ==================== CÁLCULOS POR LÍNEA+ ====================
+    
+    if 'LINEA_PLUS' not in df.columns:
+        st.error("No existe columna LINEA_PLUS en los datos")
+        st.stop()
+    
+    # Obtener todas las líneas disponibles
+    lineas_disponibles = sorted(df['LINEA_PLUS'].dropna().unique())
+    
+    # Periodo actual (mes de la fecha de corte)
+    periodo_actual = pd.Timestamp(year=fecha_corte.year, month=fecha_corte.month, day=1)
+    
+    # Filtrar datos hasta el periodo actual
+    df_periodo = df[df['FECHA'] <= periodo_actual].copy()
+    
+    # Crear tabla de resumen
+    resumen_lineas = []
+    
+    for linea in lineas_disponibles:
+        df_linea = df_periodo[df_periodo['LINEA_PLUS'] == linea]
+        
+        if df_linea.empty:
+            continue
+        
+        # Producción mes previo (mes anterior al corte)
+        mes_previo = periodo_actual - pd.DateOffset(months=1)
+        prod_mes_previo = df_linea[df_linea['FECHA'] == mes_previo]['IMP_PRIMA'].sum()
+        
+        # Producción mes actual (al corte)
+        prod_mes_actual = df_linea[df_linea['FECHA'] == periodo_actual]['IMP_PRIMA'].sum()
+        
+        # Presupuesto mes actual
+        if 'PRESUPUESTO' in df_linea.columns:
+            presup_mes = df_linea[df_linea['FECHA'] == periodo_actual]['PRESUPUESTO'].sum()
+        else:
+            presup_mes = 0.0
+        
+        # Faltante mes
+        faltante_mes = presup_mes - prod_mes_actual
+        
+        # % Ejecución mes
+        pct_ejec_mes = (prod_mes_actual / presup_mes * 100) if presup_mes > 0 else 0.0
+        
+        # Forecast mes (usando engine)
+        serie_linea = df_linea.groupby('FECHA')['IMP_PRIMA'].sum().sort_index()
+        engine_temp = ForecastEngine(conservative_factor=filters['conservative_factor'])
+        serie_clean_temp = engine_temp.sanitize_series(serie_linea, fecha_corte.year)
+        serie_train_temp, _, _ = engine_temp.split_series_exclude_partial(
+            serie_clean_temp, fecha_corte.year, fecha_corte
+        )
+        
+        _, fc_temp, _ = engine_temp.fit_forecast(serie_train_temp, steps=1)
+        forecast_mes = float(fc_temp['Forecast_mensual'].iloc[0]) if not fc_temp.empty else 0.0
+        
+        # Forecast ejecución %
+        forecast_ejec_pct = (forecast_mes / presup_mes * 100) if presup_mes > 0 else 0.0
+        
+        # Crecimiento Forecast vs Mes Previo
+        crec_fc_cop = forecast_mes - prod_mes_previo
+        crec_fc_pct = ((forecast_mes / prod_mes_previo) - 1) * 100 if prod_mes_previo > 0 else 0.0
+        
+        # Crecimiento Forecast vs Presupuesto
+        crec_fc_presup = forecast_mes - presup_mes
+        crec_fc_presup_pct = ((forecast_mes / presup_mes) - 1) * 100 if presup_mes > 0 else 0.0
+        
+        # Req x día Fc (días hábiles restantes)
+        dias_restantes = business_days_left(fecha_corte, (periodo_actual + pd.offsets.MonthEnd(0)).date())
+        req_dia_fc = faltante_mes / dias_restantes if dias_restantes > 0 else 0.0
+        
+        # Req x día Pres (días hábiles totales del mes)
+        primer_dia_mes = periodo_actual
+        ultimo_dia_mes = periodo_actual + pd.offsets.MonthEnd(0)
+        dias_totales = business_days_left(primer_dia_mes.date(), ultimo_dia_mes.date())
+        req_dia_pres = presup_mes / dias_totales if dias_totales > 0 else 0.0
+        
+        resumen_lineas.append({
+            'LINEA_PLUS': linea,
+            'Previo': prod_mes_previo,
+            'Actual': prod_mes_actual,
+            'Presupuesto': presup_mes,
+            'Faltante': faltante_mes,
+            '% Ejec.': pct_ejec_mes,
+            'Forecast (mes)': forecast_mes,
+            'Forecast ejecución': forecast_ejec_pct,
+            'Crec. Fc (COP)': crec_fc_cop,
+            'Crec. Fc (%)': crec_fc_pct,
+            'Req x día Fc': req_dia_fc,
+            'Req x día Pres': req_dia_pres
+        })
+    
+    df_resumen = pd.DataFrame(resumen_lineas)
+    
+    if not df_resumen.empty:
+        st.markdown(f"**Período:** {periodo_actual.strftime('%m/%Y')}")
+        st.markdown(f"**Ajuste conservador:** {filters['ajuste_pct']:.1f}%")
+        
+        # Formatear tabla para display
+        df_display = df_resumen.copy()
+        
+        # Aplicar formatos
+        for col in ['Previo', 'Actual', 'Presupuesto', 'Faltante', 'Forecast (mes)', 'Crec. Fc (COP)', 'Req x día Fc', 'Req x día Pres']:
+            if col in df_display.columns:
+                df_display[col] = df_display[col].apply(lambda x: fmt_cop(x))
+        
+        for col in ['% Ejec.', 'Forecast ejecución', 'Crec. Fc (%)']:
+            if col in df_display.columns:
+                df_display[col] = df_display[col].apply(lambda x: f"{x:.1f}%")
+        
+        # Mostrar tabla con estilo
+        st.markdown("#### 📊 Resumen por Línea+")
+        
+        # Convertir a HTML con colores
+        html_table = '<div style="overflow-x:auto;"><table style="width:100%;border-collapse:collapse;font-size:13px;">'
+        html_table += '<thead><tr style="background:#033b63;color:#fff;">'
+        
+        for col in df_display.columns:
+            html_table += f'<th style="padding:10px;text-align:left;border-bottom:2px solid #444;">{col}</th>'
+        
+        html_table += '</tr></thead><tbody>'
+        
+        for idx, row in df_display.iterrows():
+            html_table += '<tr style="border-bottom:1px solid rgba(255,255,255,0.05);">'
+            
+            for i, col in enumerate(df_display.columns):
+                val = row[col]
+                
+                # Aplicar colores según columna
+                style = "padding:8px;"
+                
+                if col == '% Ejec.' or col == 'Forecast ejecución':
+                    pct_val = df_resumen.iloc[idx][col]
+                    if pct_val >= 100:
+                        style += "color:#16a34a;font-weight:700;"
+                    elif pct_val >= 95:
+                        style += "color:#f59e0b;font-weight:700;"
+                    else:
+                        style += "color:#ef4444;font-weight:700;"
+                
+                elif col == 'Crec. Fc (%)' or col == 'Crec. Fc (COP)':
+                    crec_val = df_resumen.iloc[idx]['Crec. Fc (%)']
+                    if crec_val >= 0:
+                        style += "color:#16a34a;font-weight:700;"
+                    else:
+                        style += "color:#ef4444;font-weight:700;"
+                
+                elif col == 'Faltante':
+                    faltante_val = df_resumen.iloc[idx][col]
+                    if faltante_val < 0:
+                        style += "color:#16a34a;"
+                    else:
+                        style += "color:#ef4444;"
+                
+                html_table += f'<td style="{style}">{val}</td>'
+            
+            html_table += '</tr>'
+        
+        html_table += '</tbody></table></div>'
+        
+        st.markdown(html_table, unsafe_allow_html=True)
+    
+    # ==================== GRÁFICO Y PRONÓSTICO GENERAL ====================
+    st.markdown("---")
+    st.markdown("### 📈 Pronóstico Consolidado")
+    
     # Preparar serie temporal
     serie_prima = df_filtered.groupby('FECHA')['IMP_PRIMA'].sum().sort_index()
     
@@ -222,7 +394,7 @@ with tabs[1]:
         fc_display = fc_df.copy()
         fc_display['FECHA'] = fc_display['FECHA'].dt.strftime('%b-%Y')
         fc_display['Forecast_mensual'] = fc_display['Forecast_mensual'].apply(fmt_cop)
-        st.dataframe(fc_display, use_container_width=True, hide_index=True)
+        st.dataframe(fc_display[['FECHA', 'Forecast_mensual']], use_container_width=True, hide_index=True)
     
     st.info(f"📊 SMAPE validación: {smape:.2f}%")
 
