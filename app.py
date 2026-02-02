@@ -246,14 +246,14 @@ with tabs[1]:
         crec_fc_presup = forecast_mes - presup_mes
         crec_fc_presup_pct = ((forecast_mes / presup_mes) - 1) * 100 if presup_mes > 0 else 0.0
         
-        # Req x día Fc (días hábiles restantes)
-        dias_restantes = business_days_left(fecha_corte, (periodo_actual + pd.offsets.MonthEnd(0)).date())
+        # Req x día Fc (días hábiles restantes) - CORREGIDO
+        ultimo_dia_mes = periodo_actual + pd.offsets.MonthEnd(0)
+        dias_restantes = business_days_left(fecha_corte, ultimo_dia_mes)
         req_dia_fc = faltante_mes / dias_restantes if dias_restantes > 0 else 0.0
         
-        # Req x día Pres (días hábiles totales del mes)
+        # Req x día Pres (días hábiles totales del mes) - CORREGIDO
         primer_dia_mes = periodo_actual
-        ultimo_dia_mes = periodo_actual + pd.offsets.MonthEnd(0)
-        dias_totales = business_days_left(primer_dia_mes.date(), ultimo_dia_mes.date())
+        dias_totales = business_days_left(primer_dia_mes, ultimo_dia_mes)
         req_dia_pres = presup_mes / dias_totales if dias_totales > 0 else 0.0
         
         resumen_lineas.append({
