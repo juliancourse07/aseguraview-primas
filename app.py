@@ -19,15 +19,15 @@ from utils.data_processor import normalize_dataframe
 from utils.formatters import fmt_cop, badge_pct_html, badge_growth_html
 from utils.date_utils import business_days_left
 
-# Models - Ajustado al nombre real 'modelos'
+# Models
 from modelos.forecast_engine import ForecastEngine
 from modelos.fianzas_adjuster import FianzasAdjuster
 from modelos.budget_2026 import Budget2026Generator
 
-# Components - Ajustado al nombre real 'Componentes' (con mayúscula)
-from Componentes.sidebar import render_sidebar
-from Componentes.tables import df_to_html
-from Componentes.charts import render_forecast_chart
+# Components - CORREGIDO: 'componentes' (minúscula, sin acento)
+from componentes.sidebar import render_sidebar
+from componentes.tables import df_to_html
+from componentes.charts import render_forecast_chart
 
 # ====================  PAGE CONFIG ====================
 st.set_page_config(
