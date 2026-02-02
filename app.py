@@ -19,10 +19,10 @@ from utils.data_processor import normalize_dataframe
 from utils.formatters import fmt_cop, badge_pct_html, badge_growth_html
 from utils.date_utils import business_days_left
 
-# Models
-from models.forecast_engine import ForecastEngine
-from models.fianzas_adjuster import FianzasAdjuster
-from models.budget_2026 import Budget2026Generator
+# Models - CORREGIDO: 'modelos' en lugar de 'models'
+from modelos.forecast_engine import ForecastEngine
+from modelos.fianzas_adjuster import FianzasAdjuster
+from modelos.budget_2026 import Budget2026Generator
 
 # Components
 from components.sidebar import render_sidebar
