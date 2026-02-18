@@ -405,6 +405,62 @@ with tabs[1]:
         st.markdown(f"**Período:** {periodo_actual.strftime('%m/%Y')}")
         st.markdown(f"**Ajuste conservador:** {filters['ajuste_pct']:.1f}%")
         
+        # ========== CALCULAR FILA DE TOTALES ==========
+        totales = {}
+        totales['LINEA_PLUS'] = 'TOTAL'
+        
+        # Sumar todas las columnas numéricas
+        for col in df_resumen.columns:
+            if col == 'LINEA_PLUS':
+                continue
+            elif '% Ejec' in col or 'Crec. Fc (%)' in col or 'ejecución' in col:
+                # Para porcentajes, calcular el porcentaje total basado en las sumas
+                if vista_mes == "Mes":
+                    if '% Ejec.' == col:
+                        total_actual = df_resumen['Actual'].sum()
+                        total_presup = df_resumen['Presupuesto'].sum()
+                        totales[col] = (total_actual / total_presup * 100) if total_presup > 0 else 0.0
+                    elif 'Forecast ejecución' == col:
+                        total_forecast = df_resumen['Forecast (mes)'].sum()
+                        total_presup = df_resumen['Presupuesto'].sum()
+                        totales[col] = (total_forecast / total_presup * 100) if total_presup > 0 else 0.0
+                    elif 'Crec. Fc (%)' == col:
+                        total_forecast = df_resumen['Forecast (mes)'].sum()
+                        total_previo = df_resumen['Previo'].sum()
+                        totales[col] = ((total_forecast / total_previo) - 1) * 100 if total_previo > 0 else 0.0
+                elif vista_mes == "Año":
+                    if '% Ejec.' == col:
+                        total_actual = df_resumen['Actual (YTD)'].sum()
+                        total_presup = df_resumen['Presupuesto (anual)'].sum()
+                        totales[col] = (total_actual / total_presup * 100) if total_presup > 0 else 0.0
+                    elif 'Forecast ejecución' == col:
+                        total_forecast = df_resumen['Forecast (cierre)'].sum()
+                        total_presup = df_resumen['Presupuesto (anual)'].sum()
+                        totales[col] = (total_forecast / total_presup * 100) if total_presup > 0 else 0.0
+                    elif 'Crec. Fc (%)' == col:
+                        total_forecast = df_resumen['Forecast (cierre)'].sum()
+                        total_previo = df_resumen['Previo (año)'].sum()
+                        totales[col] = ((total_forecast / total_previo) - 1) * 100 if total_previo > 0 else 0.0
+                else:  # Acumulado Mes
+                    if '% Ejec.' == col:
+                        total_actual = df_resumen['Actual (YTD)'].sum()
+                        total_presup = df_resumen['Presupuesto (YTD)'].sum()
+                        totales[col] = (total_actual / total_presup * 100) if total_presup > 0 else 0.0
+                    elif 'Forecast ejecución' == col:
+                        total_forecast = df_resumen['Forecast (YTD + mes)'].sum()
+                        total_presup = df_resumen['Presupuesto (YTD)'].sum()
+                        totales[col] = (total_forecast / total_presup * 100) if total_presup > 0 else 0.0
+                    elif 'Crec. Fc (%)' == col:
+                        total_forecast = df_resumen['Forecast (YTD + mes)'].sum()
+                        total_previo = df_resumen['Previo (YTD)'].sum()
+                        totales[col] = ((total_forecast / total_previo) - 1) * 100 if total_previo > 0 else 0.0
+            else:
+                # Para valores COP, simplemente sumar
+                totales[col] = df_resumen[col].sum()
+        
+        # Agregar fila de totales al DataFrame
+        df_resumen = pd.concat([df_resumen, pd.DataFrame([totales])], ignore_index=True)
+        
         # Formatear tabla para display
         df_display = df_resumen.copy()
         
@@ -430,45 +486,53 @@ with tabs[1]:
         html_table += '</tr></thead><tbody>'
         
         for idx, row in df_display.iterrows():
-            html_table += '<tr style="border-bottom:1px solid rgba(255,255,255,0.05);">'
+            # Detectar si es la fila de totales (última fila)
+            is_total_row = (idx == len(df_display) - 1)
+            
+            row_style = 'border-bottom:1px solid rgba(255,255,255,0.05);'
+            if is_total_row:
+                row_style = 'background:rgba(56,189,248,0.1);border-top:2px solid #38bdf8;font-weight:700;'
+            
+            html_table += f'<tr style="{row_style}">'
             
             for col in df_display.columns:
                 val = row[col]
                 style = "padding:8px;"
                 
-                # Aplicar colores
-                if '% Ejec' in col or 'ejecución' in col:
-                    try:
-                        pct_val = df_resumen.iloc[idx][col]
-                        if pct_val >= 100:
-                            style += "color:#16a34a;font-weight:700;"
-                        elif pct_val >= 95:
-                            style += "color:#f59e0b;font-weight:700;"
-                        else:
-                            style += "color:#ef4444;font-weight:700;"
-                    except:
-                        pass
-                
-                elif 'Crec. Fc' in col:
-                    try:
-                        if 'Crec. Fc (%)' in df_resumen.columns:
-                            crec_val = df_resumen.iloc[idx]['Crec. Fc (%)']
-                            if crec_val >= 0:
+                # Aplicar colores (excepto para la fila de totales que ya tiene estilo diferenciado)
+                if not is_total_row:
+                    if '% Ejec' in col or 'ejecución' in col:
+                        try:
+                            pct_val = df_resumen.iloc[idx][col]
+                            if pct_val >= 100:
                                 style += "color:#16a34a;font-weight:700;"
+                            elif pct_val >= 95:
+                                style += "color:#f59e0b;font-weight:700;"
                             else:
                                 style += "color:#ef4444;font-weight:700;"
-                    except:
-                        pass
-                
-                elif col == 'Faltante':
-                    try:
-                        faltante_val = df_resumen.iloc[idx][col]
-                        if faltante_val <= 0:
-                            style += "color:#16a34a;"
-                        else:
-                            style += "color:#ef4444;"
-                    except:
-                        pass
+                        except:
+                            pass
+                    
+                    elif 'Crec. Fc' in col:
+                        try:
+                            if 'Crec. Fc (%)' in df_resumen.columns:
+                                crec_val = df_resumen.iloc[idx]['Crec. Fc (%)']
+                                if crec_val >= 0:
+                                    style += "color:#16a34a;font-weight:700;"
+                                else:
+                                    style += "color:#ef4444;font-weight:700;"
+                        except:
+                            pass
+                    
+                    elif col == 'Faltante':
+                        try:
+                            faltante_val = df_resumen.iloc[idx][col]
+                            if faltante_val <= 0:
+                                style += "color:#16a34a;"
+                            else:
+                                style += "color:#ef4444;"
+                        except:
+                            pass
                 
                 html_table += f'<td style="{style}">{val}</td>'
             
