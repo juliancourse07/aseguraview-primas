@@ -106,14 +106,30 @@ body,.stApp {background:var(--bg);color:var(--fg);}
 """, unsafe_allow_html=True)
 
 # ==================== LOAD DATA ====================
-# 🔧 CORRECCIÓN: Agregado ttl=3600 (1 hora) para actualización diaria del nowcast
-@st.cache_data(ttl=3600, show_spinner=True)
+@st.cache_data(ttl=1800, show_spinner=True)
 def load_and_process_data():
-    """Carga y procesa datos - Cache de 1 hora para actualización diaria"""
+    """Carga y procesa datos - Cache de 30 min para actualización frecuente del nowcast"""
     df_raw = load_data()
     df_processed = normalize_dataframe(df_raw)
     fecha_corte = load_cutoff_date()
     return df_processed, fecha_corte
+
+
+@st.cache_data(ttl=300)
+def nowcast_cached(prod_parcial: float, fecha_corte: pd.Timestamp,
+                   forecast_completo: float) -> float:
+    """Calcula nowcast cacheado - se actualiza cada 5 minutos.
+
+    Fórmula: prod_parcial + forecast_completo × (días_restantes / días_totales)
+    """
+    from utils.date_utils import business_days_left, get_month_range
+    primer_dia, ultimo_dia = get_month_range(fecha_corte.year, fecha_corte.month)
+    dias_totales = business_days_left(primer_dia, ultimo_dia)
+    dias_restantes = business_days_left(fecha_corte, ultimo_dia)
+    if dias_totales <= 0:
+        return prod_parcial
+    proporcion_restante = dias_restantes / dias_totales
+    return prod_parcial + forecast_completo * proporcion_restante
 
 df, fecha_corte = load_and_process_data()
 
@@ -273,10 +289,12 @@ with tabs[1]:
 
             if linea == "FIANZAS":
                 forecast_mes_full = forecast_mes_full * 0.95
+            elif linea == "AUTOMOVILES":
+                forecast_mes_full = forecast_mes_full * 1.01
 
             # Nowcast: ajuste dinámico usando producción parcial + proporción restante del forecast
             if is_partial_temp:
-                forecast_mes = engine_temp.nowcast(prod_mes_actual, fecha_corte, forecast_mes_full)
+                forecast_mes = nowcast_cached(prod_mes_actual, fecha_corte, forecast_mes_full)
             else:
                 forecast_mes = forecast_mes_full
 
@@ -358,11 +376,14 @@ with tabs[1]:
             if linea == "FIANZAS" and not fc_temp.empty:
                 fc_temp = fc_temp.copy()
                 fc_temp['Forecast_mensual'] = fc_temp['Forecast_mensual'] * 0.95
+            elif linea == "AUTOMOVILES" and not fc_temp.empty:
+                fc_temp = fc_temp.copy()
+                fc_temp['Forecast_mensual'] = fc_temp['Forecast_mensual'] * 1.01
 
             # Nowcast para el mes actual parcial
             if is_partial_temp and not fc_temp.empty and fecha_corte.month in meses_quarter:
                 forecast_mes_full = float(fc_temp['Forecast_mensual'].iloc[0])
-                nowcast_mes = engine_temp.nowcast(prod_parcial_mes, fecha_corte, forecast_mes_full)
+                nowcast_mes = nowcast_cached(prod_parcial_mes, fecha_corte, forecast_mes_full)
                 # Meses restantes (después del mes actual) también filtrados por Quarter
                 fc_restante = fc_temp.iloc[1:]
                 forecast_restante = float(
@@ -385,7 +406,10 @@ with tabs[1]:
             pct_ejec_anual = (
                 (prod_ytd_actual + prod_parcial_mes) / presup_anual * 100
             ) if presup_anual > 0 else 0.0
-            forecast_ejec_pct = (cierre_estimado / presup_anual * 100) if presup_anual > 0 else 0.0
+            if presup_anual <= 0:
+                forecast_ejec_pct = 0.0
+            else:
+                forecast_ejec_pct = (cierre_estimado / presup_anual) * 100
             crec_fc_cop = cierre_estimado - prod_anio_previo
             crec_fc_pct = ((cierre_estimado / prod_anio_previo) - 1) * 100 if prod_anio_previo > 0 else 0.0
 
@@ -433,6 +457,8 @@ with tabs[1]:
 
             if linea == "FIANZAS":
                 forecast_mes_full = forecast_mes_full * 0.95
+            elif linea == "AUTOMOVILES":
+                forecast_mes_full = forecast_mes_full * 1.01
 
             prod_meses_cerrados = df_linea[
                 (df_linea['FECHA'].dt.year == ref_year) &
@@ -443,7 +469,7 @@ with tabs[1]:
             # Nowcast para el mes actual parcial
             prod_parcial_mes = df_linea[df_linea['FECHA'] == periodo_actual]['IMP_PRIMA'].sum()
             if is_partial_temp and fecha_corte.month in meses_quarter:
-                forecast_mes_actual = engine_temp.nowcast(prod_parcial_mes, fecha_corte, forecast_mes_full)
+                forecast_mes_actual = nowcast_cached(prod_parcial_mes, fecha_corte, forecast_mes_full)
             else:
                 forecast_mes_actual = forecast_mes_full if fecha_corte.month in meses_quarter else 0.0
 
