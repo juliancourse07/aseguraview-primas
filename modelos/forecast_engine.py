@@ -7,7 +7,7 @@ import numpy as np
 import warnings
 from statsmodels.tsa.statespace.sarimax import SARIMAX
 from statsmodels.tsa.arima.model import ARIMA
-from utils.date_utils import ensure_monthly
+from utils.date_utils import ensure_monthly, business_days_left, get_month_range
 
 warnings.filterwarnings("ignore")
 
@@ -70,8 +70,41 @@ class ForecastEngine:
         
         return np.mean(2.0 * numerator / denominator) * 100
     
+    def nowcast(self, prod_parcial: float, fecha_corte: pd.Timestamp,
+                forecast_mes_completo: float) -> float:
+        """
+        Calcula nowcast dinámico para el mes actual.
+
+        Toma la producción parcial acumulada hasta fecha_corte y proyecta
+        los días hábiles restantes usando la proporción del forecast original.
+
+        Fórmula: nowcast = prod_parcial + forecast_completo * (días_restantes / días_totales)
+
+        Args:
+            prod_parcial: Producción real acumulada hasta fecha_corte
+            fecha_corte: Fecha de corte de los datos (puede ser intramensual)
+            forecast_mes_completo: Pronóstico SARIMAX para el mes completo
+
+        Returns:
+            Nowcast ajustado para el mes
+        """
+        primer_dia, ultimo_dia = get_month_range(fecha_corte.year, fecha_corte.month)
+        dias_totales = business_days_left(primer_dia, ultimo_dia)
+        dias_restantes = business_days_left(fecha_corte, ultimo_dia)
+
+        if dias_totales <= 0:
+            return prod_parcial
+
+        proporcion_restante = dias_restantes / dias_totales
+        return prod_parcial + forecast_mes_completo * proporcion_restante
+
     def fit_forecast(self, ts: pd.Series, steps: int, eval_months: int = 6) -> tuple:
-        """Ajusta modelo SARIMAX/ARIMA y genera pronóstico"""
+        """Ajusta modelo SARIMAX/ARIMA y genera pronóstico.
+
+        Returns:
+            Tuple de (hist_df, forecast_df, smape_validation, accuracy_df) donde
+            accuracy_df contiene las predicciones históricas rolling vs real.
+        """
         if steps < 1:
             steps = 1
         
@@ -82,17 +115,20 @@ class ForecastEngine:
             empty_fc = pd.DataFrame(columns=[
                 "FECHA", "Forecast_mensual", "Forecast_acum", "IC_lo", "IC_hi"
             ])
-            return empty_hist, empty_fc, np.nan
+            empty_acc = pd.DataFrame(columns=["FECHA", "Real", "Forecast_hist"])
+            return empty_hist, empty_fc, np.nan, empty_acc
         
         y = np.log1p(ts)
         
         smapes = []
+        accuracy_data = []
         start = max(len(y) - eval_months, 12)
         
         if len(y) >= start + 1:
             for t in range(start, len(y)):
                 y_train = y.iloc[:t]
                 y_test = y.iloc[t:t+1]
+                real_value = float(np.expm1(y_test.values[0]))
                 
                 try:
                     model = SARIMAX(
@@ -109,12 +145,23 @@ class ForecastEngine:
                     result = model.fit()
                     pred = result.get_forecast(steps=1).predicted_mean
                 
+                pred_value = float(np.expm1(pred.values[0])) * self.conservative_factor
                 smapes.append(self.smape(
-                    np.expm1(y_test.values),
-                    np.expm1(pred.values)
+                    np.array([real_value]),
+                    np.array([pred_value])
                 ))
+                accuracy_data.append({
+                    'FECHA': ts.index[t],
+                    'Real': real_value,
+                    'Forecast_hist': pred_value
+                })
         
         smape_validation = float(np.mean(smapes)) if smapes else np.nan
+        accuracy_df = (
+            pd.DataFrame(accuracy_data)
+            if accuracy_data
+            else pd.DataFrame(columns=["FECHA", "Real", "Forecast_hist"])
+        )
         
         def apply_adjustment(arr):
             return np.expm1(arr) * self.conservative_factor
@@ -166,4 +213,4 @@ class ForecastEngine:
             "IC_hi": conf_int.iloc[:, 1].values.clip(min=0)
         })
         
-        return hist_df, forecast_df, smape_validation
+        return hist_df, forecast_df, smape_validation, accuracy_df
