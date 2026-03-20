@@ -4,11 +4,27 @@ Utilidades para fechas
 """
 import pandas as pd
 from datetime import date, datetime
+from pandas.tseries.offsets import CustomBusinessDay
+
+try:
+    import holidays as holidays_lib
+    _HOLIDAYS_AVAILABLE = True
+except ImportError:
+    _HOLIDAYS_AVAILABLE = False
+
+
+def _get_colombia_bday(years):
+    """Retorna CustomBusinessDay con festivos de Colombia para los años indicados."""
+    if _HOLIDAYS_AVAILABLE:
+        co_holidays = holidays_lib.Colombia(years=years)
+        return CustomBusinessDay(holidays=list(co_holidays.keys()))
+    return CustomBusinessDay()
 
 
 def business_days_left(fecha_inicio, fecha_fin) -> int:
     """
-    Calcula días hábiles restantes entre dos fechas.
+    Calcula días hábiles restantes entre dos fechas excluyendo
+    fines de semana y festivos colombianos.
     
     Args:
         fecha_inicio: fecha inicial (puede ser pd.Timestamp, date o datetime)
@@ -30,9 +46,11 @@ def business_days_left(fecha_inicio, fecha_fin) -> int:
     if fecha_fin < fecha_inicio:
         return 0
     
-    # Generar rango de días hábiles
-    rng = pd.date_range(start=fecha_inicio, end=fecha_fin, freq="B")
+    years = list(range(fecha_inicio.year, fecha_fin.year + 1))
+    bday_co = _get_colombia_bday(years)
+    rng = pd.date_range(start=fecha_inicio, end=fecha_fin, freq=bday_co)
     return len(rng)
+
 
 
 def get_month_range(year: int, month: int) -> tuple:
