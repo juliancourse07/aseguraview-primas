@@ -289,8 +289,10 @@ with tabs[1]:
 
             if linea == "FIANZAS":
                 forecast_mes_full = forecast_mes_full * 0.95
-            elif linea == "AUTOMOVILES":
-                forecast_mes_full = forecast_mes_full * 1.01
+            elif linea == "SOAT":
+                pass  # Sin ajuste
+            else:
+                forecast_mes_full = forecast_mes_full * 0.99
 
             # Nowcast: ajuste dinámico usando producción parcial + proporción restante del forecast
             if is_partial_temp:
@@ -376,9 +378,11 @@ with tabs[1]:
             if linea == "FIANZAS" and not fc_temp.empty:
                 fc_temp = fc_temp.copy()
                 fc_temp['Forecast_mensual'] = fc_temp['Forecast_mensual'] * 0.95
-            elif linea == "AUTOMOVILES" and not fc_temp.empty:
+            elif linea == "SOAT" and not fc_temp.empty:
+                pass  # Sin ajuste
+            elif not fc_temp.empty:
                 fc_temp = fc_temp.copy()
-                fc_temp['Forecast_mensual'] = fc_temp['Forecast_mensual'] * 1.01
+                fc_temp['Forecast_mensual'] = fc_temp['Forecast_mensual'] * 0.99
 
             # Nowcast para el mes actual parcial
             if is_partial_temp and not fc_temp.empty and fecha_corte.month in meses_quarter:
@@ -457,10 +461,12 @@ with tabs[1]:
 
             if linea == "FIANZAS":
                 forecast_mes_full = forecast_mes_full * 0.95
-            elif linea == "AUTOMOVILES":
-                forecast_mes_full = forecast_mes_full * 1.01
+            elif linea == "SOAT":
+                pass  # Sin ajuste
+            else:
+                forecast_mes_full = forecast_mes_full * 0.99
 
-            prod_meses_cerrados = df_linea[
+            prod_meses_cerrados= df_linea[
                 (df_linea['FECHA'].dt.year == ref_year) &
                 (df_linea['FECHA'].dt.month < fecha_corte.month) &
                 (df_linea['FECHA'].dt.month.isin(meses_quarter))
