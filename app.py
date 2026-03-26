@@ -235,8 +235,8 @@ with tabs[1]:
     # Periodo actual (mes de la fecha de corte)
     periodo_actual = pd.Timestamp(year=fecha_corte.year, month=fecha_corte.month, day=1)
     
-    # Filtrar datos hasta el periodo actual
-    df_periodo = df[df['FECHA'] <= periodo_actual].copy()
+    # Filtrar datos hasta el periodo actual (usar df_filtered para respetar filtros de Sucursal/Código)
+    df_periodo = df_filtered[df_filtered['FECHA'] <= periodo_actual].copy()
     
     # Generar forecast consolidado
     serie_prima = df_filtered.groupby('FECHA')['IMP_PRIMA'].sum().sort_index()
@@ -308,10 +308,8 @@ with tabs[1]:
 
             ultimo_dia_mes = periodo_actual + pd.offsets.MonthEnd(0)
             dias_restantes = business_days_left(fecha_corte, ultimo_dia_mes)
-            req_dia_fc = faltante_mes / dias_restantes if dias_restantes > 0 else 0.0
-            primer_dia_mes = periodo_actual
-            dias_totales = business_days_left(primer_dia_mes, ultimo_dia_mes)
-            req_dia_pres = presup_mes / dias_totales if dias_totales > 0 else 0.0
+            req_dia_fc = (forecast_mes - prod_mes_actual) / dias_restantes if dias_restantes > 0 else 0.0
+            req_dia_pres = (presup_mes - prod_mes_actual) / dias_restantes if dias_restantes > 0 else 0.0
 
             resumen_lineas.append({
                 'LINEA_PLUS': linea,
