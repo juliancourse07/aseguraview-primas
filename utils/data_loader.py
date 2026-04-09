@@ -45,7 +45,7 @@ def load_cutoff_date(sheet_id: str = SHEET_ID,
         return pd.Timestamp.today().normalize()
 
 
-@st.cache_data(ttl=300, show_spinner=False)
+@st.cache_data(ttl=1800, show_spinner=False)
 def load_data(sheet_id: str = SHEET_ID, 
               sheet_name: str = SHEET_NAME_DATOS) -> pd.DataFrame:
     """
