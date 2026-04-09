@@ -30,6 +30,25 @@ from componentes.sidebar import render_sidebar
 from componentes.tables import df_to_html
 from componentes.charts import render_forecast_chart
 
+# ==================== CONSTANTS ====================
+# Indicadores visuales para el gráfico de ritmo comercial por sucursal
+_INDICADOR_BUEN_RITMO = "🐰⚡"   # cumplimiento_ritmo >= 90%
+_INDICADOR_RITMO_LENTO = "🐢"    # cumplimiento_ritmo < 90%
+_UMBRAL_BUEN_RITMO = 90          # % mínimo para considerar buen ritmo
+_UMBRAL_RITMO_MEDIO = 80         # % mínimo para naranja (ritmo medio)
+_COLOR_BUEN_RITMO = '#16a34a'    # verde
+_COLOR_RITMO_MEDIO = '#f59e0b'   # naranja
+_COLOR_RITMO_LENTO = '#ef4444'   # rojo
+
+
+def _hex_to_rgba(hex_color: str, alpha: float = 0.1) -> str:
+    """Convierte color hexadecimal a cadena rgba() para Plotly."""
+    r = int(hex_color[1:3], 16)
+    g = int(hex_color[3:5], 16)
+    b = int(hex_color[5:7], 16)
+    return f'rgba({r},{g},{b},{alpha})'
+
+
 # ====================  PAGE CONFIG ====================
 st.set_page_config(
     page_title=PAGE_TITLE,
@@ -144,6 +163,15 @@ def compute_line_forecast(serie_data: tuple, conservative_factor: float,
         ref_year: año de referencia
         fecha_corte_str: fecha de corte como string ISO para hash
         steps: número de pasos a pronosticar
+
+    Returns:
+        dict con las claves:
+            fc_fechas (list[str]): fechas ISO del pronóstico
+            fc_valores (list[float]): valores de Forecast_mensual
+            fc_ic_hi (list[float]): límite superior IC 95% (vacío si no disponible)
+            fc_ic_lo (list[float]): límite inferior IC 95% (vacío si no disponible)
+            is_partial (bool): True si el mes actual es parcial
+            cur_month_str (str | None): mes actual como string ISO, o None
     """
     fechas, valores = serie_data
     serie = pd.Series(list(valores), index=pd.to_datetime(list(fechas)))
@@ -735,8 +763,7 @@ with tabs[1]:
             ))
 
             if 'IC_hi' in fc_df_l.columns and 'IC_lo' in fc_df_l.columns:
-                # Convertir hex a rgba para la banda de confianza
-                r, g, b = int(color[1:3], 16), int(color[3:5], 16), int(color[5:7], 16)
+                fillcolor = _hex_to_rgba(color, alpha=0.1)
                 fig_lineas.add_trace(go.Scatter(
                     x=fc_df_l['FECHA'],
                     y=fc_df_l['IC_hi'],
@@ -750,7 +777,7 @@ with tabs[1]:
                     y=fc_df_l['IC_lo'],
                     mode='lines',
                     fill='tonexty',
-                    fillcolor=f'rgba({r},{g},{b},0.1)',
+                    fillcolor=fillcolor,
                     line=dict(width=0),
                     name=f'{linea} IC 95%',
                     hoverinfo='skip'
@@ -819,15 +846,15 @@ with tabs[1]:
 
             forecast_ejec_suc = (forecast_suc / presup_mes_suc * 100) if presup_mes_suc > 0 else 0
 
-            if cumplimiento_ritmo >= 90:
-                indicador = "🐰⚡"
-                color_barra = '#16a34a'
-            elif cumplimiento_ritmo >= 80:
-                indicador = "🐢"
-                color_barra = '#f59e0b'
+            if cumplimiento_ritmo >= _UMBRAL_BUEN_RITMO:
+                indicador = _INDICADOR_BUEN_RITMO
+                color_barra = _COLOR_BUEN_RITMO
+            elif cumplimiento_ritmo >= _UMBRAL_RITMO_MEDIO:
+                indicador = _INDICADOR_RITMO_LENTO
+                color_barra = _COLOR_RITMO_MEDIO
             else:
-                indicador = "🐢"
-                color_barra = '#ef4444'
+                indicador = _INDICADOR_RITMO_LENTO
+                color_barra = _COLOR_RITMO_LENTO
 
             rendimiento_sucursales.append({
                 'Sucursal': f"{indicador} {sucursal}",
