@@ -696,108 +696,121 @@ with tabs[1]:
     
     st.info(f"📊 SMAPE validación: {smape:.2f}%")
 
-    # ==================== GRÁFICO DETALLADO POR LÍNEA ====================
+    # ==================== GRÁFICO DETALLADO POR LÍNEA (selector individual) ====================
     st.markdown("---")
     st.markdown("### 📈 Pronóstico Detallado por Línea")
 
-    forecast_por_linea = {}
-    colores_linea = ['#38bdf8', '#f59e0b', '#16a34a', '#ef4444', '#a78bfa', '#14b8a6']
+    linea_seleccionada = st.selectbox(
+        "Selecciona una línea de negocio",
+        options=lineas_disponibles,
+        key="selector_linea_forecast"
+    )
 
-    for linea in lineas_disponibles:
-        df_linea_chart = df_filtered[df_filtered['LINEA_PLUS'] == linea]
-        if df_linea_chart.empty:
-            continue
+    df_linea_sel = df_filtered[df_filtered['LINEA_PLUS'] == linea_seleccionada]
 
-        serie_linea_chart = df_linea_chart.groupby('FECHA')['IMP_PRIMA'].sum().sort_index()
-        serie_data_chart = (
-            tuple(str(d) for d in serie_linea_chart.index),
-            tuple(float(v) for v in serie_linea_chart.values),
-        )
-        fc_result = compute_line_forecast(
-            serie_data_chart,
-            filters['conservative_factor'],
-            ref_year,
-            str(fecha_corte.date()),
-            steps=12
+    if not df_linea_sel.empty:
+        serie_linea = df_linea_sel.groupby('FECHA')['IMP_PRIMA'].sum().sort_index()
+
+        engine_sel = ForecastEngine(conservative_factor=filters['conservative_factor'])
+        serie_clean_sel = engine_sel.sanitize_series(serie_linea, ref_year)
+        serie_train_sel, _, _ = engine_sel.split_series_exclude_partial(
+            serie_clean_sel, ref_year, fecha_corte
         )
 
-        if not fc_result['fc_fechas']:
-            continue
+        hist_sel, fc_sel, smape_sel, acc_sel = engine_sel.fit_forecast(serie_train_sel, steps=12)
 
-        hist_chart = pd.DataFrame({
-            'FECHA': serie_linea_chart.index,
-            'Mensual': serie_linea_chart.values
-        })
-        fc_chart = pd.DataFrame({
-            'FECHA': pd.to_datetime(fc_result['fc_fechas']),
-            'Forecast_mensual': fc_result['fc_valores'],
-        })
-        if fc_result['fc_ic_hi']:
-            fc_chart['IC_hi'] = fc_result['fc_ic_hi']
-            fc_chart['IC_lo'] = fc_result['fc_ic_lo']
+        # Aplicar ajustes específicos por línea (NO MODIFICAR ESTA LÓGICA)
+        if linea_seleccionada == "FIANZAS":
+            fc_sel = fc_sel.copy()
+            fc_sel['Forecast_mensual'] = fc_sel['Forecast_mensual'] * 0.95
+            fc_sel['IC_lo'] = fc_sel['IC_lo'] * 0.95
+            fc_sel['IC_hi'] = fc_sel['IC_hi'] * 0.95
+        elif linea_seleccionada == "SOAT":
+            pass  # Sin ajuste
+        else:
+            fc_sel = fc_sel.copy()
+            fc_sel['Forecast_mensual'] = fc_sel['Forecast_mensual'] * 0.99
+            fc_sel['IC_lo'] = fc_sel['IC_lo'] * 0.99
+            fc_sel['IC_hi'] = fc_sel['IC_hi'] * 0.99
 
-        forecast_por_linea[linea] = {'hist': hist_chart, 'fc': fc_chart}
+        # Métricas en columnas
+        col1, col2, col3, col4 = st.columns(4)
+        prod_ytd = float(serie_clean_sel.sum())
+        proy_restante = float(fc_sel['Forecast_mensual'].sum())
+        cierre_est_linea = prod_ytd + proy_restante
 
-    if forecast_por_linea:
-        fig_lineas = go.Figure()
+        col1.metric("Producción YTD", fmt_cop(prod_ytd))
+        col2.metric("Proyección Restante", fmt_cop(proy_restante))
+        col3.metric("Cierre Estimado", fmt_cop(cierre_est_linea))
+        col4.metric("Precisión (SMAPE)", f"{smape_sel:.1f}%")
 
-        for idx, (linea, data) in enumerate(forecast_por_linea.items()):
-            color = colores_linea[idx % len(colores_linea)]
-            hist_df_l = data['hist']
-            fc_df_l = data['fc']
-
-            fig_lineas.add_trace(go.Scatter(
-                x=hist_df_l['FECHA'],
-                y=hist_df_l['Mensual'],
-                mode='lines',
-                name=f'{linea} (Histórico)',
-                line=dict(color=color, width=2)
-            ))
-
-            fig_lineas.add_trace(go.Scatter(
-                x=fc_df_l['FECHA'],
-                y=fc_df_l['Forecast_mensual'],
-                mode='lines+markers',
-                name=f'{linea} (Pronóstico)',
-                line=dict(color=color, width=2, dash='dash')
-            ))
-
-            if 'IC_hi' in fc_df_l.columns and 'IC_lo' in fc_df_l.columns:
-                fillcolor = _hex_to_rgba(color, alpha=0.1)
-                fig_lineas.add_trace(go.Scatter(
-                    x=fc_df_l['FECHA'],
-                    y=fc_df_l['IC_hi'],
-                    mode='lines',
-                    line=dict(width=0),
-                    showlegend=False,
-                    hoverinfo='skip'
-                ))
-                fig_lineas.add_trace(go.Scatter(
-                    x=fc_df_l['FECHA'],
-                    y=fc_df_l['IC_lo'],
-                    mode='lines',
-                    fill='tonexty',
-                    fillcolor=fillcolor,
-                    line=dict(width=0),
-                    name=f'{linea} IC 95%',
-                    hoverinfo='skip'
-                ))
-
-        fig_lineas.update_layout(
-            title="Pronóstico Detallado por Línea de Negocio",
-            xaxis_title="Fecha",
-            yaxis_title="COP",
-            hovermode='x unified',
-            template="plotly_dark",
-            height=500,
-            margin=dict(l=10, r=10, t=40, b=10),
+        fig_individual = render_forecast_chart(
+            hist_sel,
+            fc_sel,
+            title=f"Pronóstico {linea_seleccionada} {ref_year}",
+            accuracy_df=acc_sel
         )
-        st.plotly_chart(fig_lineas, use_container_width=True)
+        st.plotly_chart(fig_individual, use_container_width=True)
+
+        with st.expander("📋 Ver detalle mensual del pronóstico"):
+            fc_display_sel = fc_sel.copy()
+            fc_display_sel['FECHA'] = fc_display_sel['FECHA'].dt.strftime('%b-%Y')
+            fc_display_sel['Forecast_mensual'] = fc_display_sel['Forecast_mensual'].apply(fmt_cop)
+            fc_display_sel['IC_lo'] = fc_display_sel['IC_lo'].apply(fmt_cop)
+            fc_display_sel['IC_hi'] = fc_display_sel['IC_hi'].apply(fmt_cop)
+            st.dataframe(
+                fc_display_sel[['FECHA', 'Forecast_mensual', 'IC_lo', 'IC_hi']],
+                use_container_width=True,
+                hide_index=True
+            )
     else:
-        st.info("No hay datos suficientes para mostrar el pronóstico por línea")
+        st.info(f"No hay datos disponibles para {linea_seleccionada} con los filtros seleccionados")
 
     # ==================== GRÁFICO RENDIMIENTO POR SUCURSAL ====================
     st.markdown("---")
+
+    with st.expander("💡 ¿Cómo funciona esta visualización? (Machine Learning aplicado)"):
+        st.markdown("""
+    ### 🤖 Análisis Predictivo de Ritmo Comercial
+    
+    Este gráfico utiliza **Machine Learning** y análisis de series temporales para evaluar el desempeño comercial en tiempo real.
+    
+    #### 🧮 ¿Cómo se calcula?
+    
+    1. **Días transcurridos vs días totales del mes**
+       - Ejemplo: Si estamos en el día 9 de 30 → 30% del mes ha pasado
+    
+    2. **Ritmo esperado**
+       - Si el presupuesto mensual es $100M y pasó el 30% del mes
+       - Deberías llevar: $30M (30% del presupuesto)
+    
+    3. **Ritmo real**
+       - Si la producción real es $27M
+       - % Cumplimiento del ritmo = 27/30 = **90%**
+    
+    4. **Pronóstico SARIMAX**
+       - El modelo de series temporales proyecta el cierre del mes
+       - Considera estacionalidad, tendencias y patrones históricos
+    
+    #### 🎯 ¿Qué significan los indicadores?
+    
+    - 🐰⚡ **Verde (≥90%)**: Ritmo excelente, alta probabilidad de cumplir meta
+    - 🐢 **Naranja (80-89%)**: Ritmo moderado, requiere atención
+    - 🐢 **Rojo (<80%)**: Ritmo bajo, intervención urgente necesaria
+    
+    #### 📊 Ventajas del análisis ML
+    
+    - ✅ **Detección temprana**: Identifica problemas desde los primeros días del mes
+    - ✅ **Comparación justa**: Todas las sucursales se miden con la misma métrica normalizada
+    - ✅ **Acción preventiva**: Permite intervenir antes de que termine el mes
+    - ✅ **Forecast integrado**: Combina producción real + proyección SARIMAX
+    
+    #### 🔍 Ordenamiento
+    
+    Las sucursales están ordenadas de **mayor a menor volumen de primas**, permitiendo 
+    enfocar la atención en las sucursales con mayor impacto en el resultado global.
+    """)
+
     st.markdown("### 🏢 Rendimiento por Sucursal (Ritmo Comercial)")
 
     if 'SUCURSAL' not in df_filtered.columns:
@@ -869,7 +882,7 @@ with tabs[1]:
 
         if rendimiento_sucursales:
             df_rend = pd.DataFrame(rendimiento_sucursales)
-            df_rend = df_rend.sort_values('Ritmo (%)', ascending=True)
+            df_rend = df_rend.sort_values('Producción', ascending=True)
 
             fig_suc = go.Figure()
 
