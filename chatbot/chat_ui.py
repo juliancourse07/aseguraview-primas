@@ -206,12 +206,17 @@ def _init_session_state() -> None:
         st.session_state.chat_input_value = ""
 
 
-def render_chat_panel(system_prompt: str) -> None:
+def render_chat_panel(system_prompt: str, lazy: bool = True) -> None:
     """Renderiza el botón flotante y, si está abierto, el panel de chat.
 
     Args:
         system_prompt: Prompt del sistema con contexto del dashboard,
                        generado por `chatbot.chat_logic.build_context`.
+                       Puede ser cadena vacía cuando ``lazy=True`` y el chat
+                       está cerrado (en ese caso solo se muestra el botón).
+        lazy: Si ``True`` (por defecto), solo renderiza el panel cuando el
+              usuario abre el chat; el botón de toggle siempre se muestra.
+              Si ``False``, renderiza el panel independientemente del estado.
     """
     _init_session_state()
 
@@ -241,7 +246,7 @@ def render_chat_panel(system_prompt: str) -> None:
         st.rerun()
 
     if not st.session_state.chat_open:
-        return
+        return  # Lazy: no renderizar panel cuando está cerrado
 
     # ── Panel de chat ──────────────────────────────────────────────────────
     st.markdown(
