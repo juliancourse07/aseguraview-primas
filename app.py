@@ -8,6 +8,7 @@ warnings.filterwarnings("ignore")
 
 import streamlit as st
 import pandas as pd
+import plotly.graph_objects as go
 from io import BytesIO
 
 # Configuración
@@ -130,6 +131,41 @@ def nowcast_cached(prod_parcial: float, fecha_corte: pd.Timestamp,
         return prod_parcial
     proporcion_restante = dias_restantes / dias_totales
     return prod_parcial + forecast_completo * proporcion_restante
+
+@st.cache_data(ttl=600)
+def compute_line_forecast(serie_data: tuple, conservative_factor: float,
+                          ref_year: int, fecha_corte_str: str,
+                          steps: int = 1) -> dict:
+    """Calcula forecast para una línea específica (cacheado).
+
+    Args:
+        serie_data: tuple de (fechas_iso, valores) para permitir hash
+        conservative_factor: factor de ajuste conservador
+        ref_year: año de referencia
+        fecha_corte_str: fecha de corte como string ISO para hash
+        steps: número de pasos a pronosticar
+    """
+    fechas, valores = serie_data
+    serie = pd.Series(list(valores), index=pd.to_datetime(list(fechas)))
+    engine = ForecastEngine(conservative_factor=conservative_factor)
+    fecha_corte_ts = pd.Timestamp(fecha_corte_str)
+    serie_clean = engine.sanitize_series(serie, ref_year)
+    serie_train, cur_month, is_partial = engine.split_series_exclude_partial(
+        serie_clean, ref_year, fecha_corte_ts
+    )
+    _, fc_df, _, _ = engine.fit_forecast(serie_train, steps=steps)
+    if fc_df.empty:
+        return {'fc_fechas': [], 'fc_valores': [], 'fc_ic_hi': [], 'fc_ic_lo': [],
+                'is_partial': is_partial, 'cur_month_str': None}
+    return {
+        'fc_fechas': [str(d) for d in fc_df['FECHA']],
+        'fc_valores': list(fc_df['Forecast_mensual']),
+        'fc_ic_hi': list(fc_df['IC_hi']) if 'IC_hi' in fc_df.columns else [],
+        'fc_ic_lo': list(fc_df['IC_lo']) if 'IC_lo' in fc_df.columns else [],
+        'is_partial': is_partial,
+        'cur_month_str': str(cur_month) if cur_month is not None else None,
+    }
+
 
 df, fecha_corte = load_and_process_data()
 
@@ -347,10 +383,12 @@ with tabs[1]:
                 if fecha_corte.month in meses_quarter else 0.0
             )
 
-            presup_anual = df_linea[
-                (df_linea['FECHA'].dt.year == ref_year) &
-                (df_linea['FECHA'].dt.month.isin(meses_quarter))
-            ]['PRESUPUESTO'].sum() if 'PRESUPUESTO' in df_linea.columns else 0.0
+            # Presupuesto anual: usar df_filtered (no df_periodo) para incluir todos los meses del año
+            df_linea_full = df_filtered[df_filtered['LINEA_PLUS'] == linea]
+            presup_anual = df_linea_full[
+                (df_linea_full['FECHA'].dt.year == ref_year) &
+                (df_linea_full['FECHA'].dt.month.isin(meses_quarter))
+            ]['PRESUPUESTO'].sum() if 'PRESUPUESTO' in df_linea_full.columns else 0.0
 
             serie_linea = df_linea.groupby('FECHA')['IMP_PRIMA'].sum().sort_index()
             engine_temp = ForecastEngine(conservative_factor=filters['conservative_factor'])
@@ -418,7 +456,7 @@ with tabs[1]:
             resumen_lineas.append({
                 'LINEA_PLUS': linea,
                 'Previo (año)': prod_anio_previo,
-                'Actual (YTD)': prod_ytd_actual + prod_parcial_mes,
+                'Actual (YTD)': prod_ytd_actual,
                 'Presupuesto (anual)': presup_anual,
                 'Faltante': faltante_anual,
                 '% Ejec.': pct_ejec_anual,
@@ -629,6 +667,220 @@ with tabs[1]:
         st.dataframe(fc_display[['FECHA', 'Forecast_mensual']], use_container_width=True, hide_index=True)
     
     st.info(f"📊 SMAPE validación: {smape:.2f}%")
+
+    # ==================== GRÁFICO DETALLADO POR LÍNEA ====================
+    st.markdown("---")
+    st.markdown("### 📈 Pronóstico Detallado por Línea")
+
+    forecast_por_linea = {}
+    colores_linea = ['#38bdf8', '#f59e0b', '#16a34a', '#ef4444', '#a78bfa', '#14b8a6']
+
+    for linea in lineas_disponibles:
+        df_linea_chart = df_filtered[df_filtered['LINEA_PLUS'] == linea]
+        if df_linea_chart.empty:
+            continue
+
+        serie_linea_chart = df_linea_chart.groupby('FECHA')['IMP_PRIMA'].sum().sort_index()
+        serie_data_chart = (
+            tuple(str(d) for d in serie_linea_chart.index),
+            tuple(float(v) for v in serie_linea_chart.values),
+        )
+        fc_result = compute_line_forecast(
+            serie_data_chart,
+            filters['conservative_factor'],
+            ref_year,
+            str(fecha_corte.date()),
+            steps=12
+        )
+
+        if not fc_result['fc_fechas']:
+            continue
+
+        hist_chart = pd.DataFrame({
+            'FECHA': serie_linea_chart.index,
+            'Mensual': serie_linea_chart.values
+        })
+        fc_chart = pd.DataFrame({
+            'FECHA': pd.to_datetime(fc_result['fc_fechas']),
+            'Forecast_mensual': fc_result['fc_valores'],
+        })
+        if fc_result['fc_ic_hi']:
+            fc_chart['IC_hi'] = fc_result['fc_ic_hi']
+            fc_chart['IC_lo'] = fc_result['fc_ic_lo']
+
+        forecast_por_linea[linea] = {'hist': hist_chart, 'fc': fc_chart}
+
+    if forecast_por_linea:
+        fig_lineas = go.Figure()
+
+        for idx, (linea, data) in enumerate(forecast_por_linea.items()):
+            color = colores_linea[idx % len(colores_linea)]
+            hist_df_l = data['hist']
+            fc_df_l = data['fc']
+
+            fig_lineas.add_trace(go.Scatter(
+                x=hist_df_l['FECHA'],
+                y=hist_df_l['Mensual'],
+                mode='lines',
+                name=f'{linea} (Histórico)',
+                line=dict(color=color, width=2)
+            ))
+
+            fig_lineas.add_trace(go.Scatter(
+                x=fc_df_l['FECHA'],
+                y=fc_df_l['Forecast_mensual'],
+                mode='lines+markers',
+                name=f'{linea} (Pronóstico)',
+                line=dict(color=color, width=2, dash='dash')
+            ))
+
+            if 'IC_hi' in fc_df_l.columns and 'IC_lo' in fc_df_l.columns:
+                # Convertir hex a rgba para la banda de confianza
+                r, g, b = int(color[1:3], 16), int(color[3:5], 16), int(color[5:7], 16)
+                fig_lineas.add_trace(go.Scatter(
+                    x=fc_df_l['FECHA'],
+                    y=fc_df_l['IC_hi'],
+                    mode='lines',
+                    line=dict(width=0),
+                    showlegend=False,
+                    hoverinfo='skip'
+                ))
+                fig_lineas.add_trace(go.Scatter(
+                    x=fc_df_l['FECHA'],
+                    y=fc_df_l['IC_lo'],
+                    mode='lines',
+                    fill='tonexty',
+                    fillcolor=f'rgba({r},{g},{b},0.1)',
+                    line=dict(width=0),
+                    name=f'{linea} IC 95%',
+                    hoverinfo='skip'
+                ))
+
+        fig_lineas.update_layout(
+            title="Pronóstico Detallado por Línea de Negocio",
+            xaxis_title="Fecha",
+            yaxis_title="COP",
+            hovermode='x unified',
+            template="plotly_dark",
+            height=500,
+            margin=dict(l=10, r=10, t=40, b=10),
+        )
+        st.plotly_chart(fig_lineas, use_container_width=True)
+    else:
+        st.info("No hay datos suficientes para mostrar el pronóstico por línea")
+
+    # ==================== GRÁFICO RENDIMIENTO POR SUCURSAL ====================
+    st.markdown("---")
+    st.markdown("### 🏢 Rendimiento por Sucursal (Ritmo Comercial)")
+
+    if 'SUCURSAL' not in df_filtered.columns:
+        st.info("📊 Filtro de sucursal no disponible en los datos")
+    else:
+        sucursales = sorted(df_filtered['SUCURSAL'].dropna().unique())
+
+        rendimiento_sucursales = []
+        ultimo_dia_mes_suc = periodo_actual + pd.offsets.MonthEnd(0)
+        dias_totales_mes = business_days_left(periodo_actual, ultimo_dia_mes_suc)
+        dias_transcurridos_mes = business_days_left(periodo_actual, fecha_corte)
+
+        for sucursal in sucursales:
+            df_suc = df_filtered[df_filtered['SUCURSAL'] == sucursal]
+
+            prod_mes_suc = df_suc[df_suc['FECHA'] == periodo_actual]['IMP_PRIMA'].sum()
+            presup_mes_suc = (
+                df_suc[df_suc['FECHA'] == periodo_actual]['PRESUPUESTO'].sum()
+                if 'PRESUPUESTO' in df_suc.columns else 0.0
+            )
+
+            if presup_mes_suc <= 0:
+                continue
+
+            # Ritmo: qué porcentaje del tiempo transcurrido se ha ejecutado
+            ritmo_necesario = (presup_mes_suc / dias_totales_mes) * dias_transcurridos_mes if dias_totales_mes > 0 else 0
+            cumplimiento_ritmo = (prod_mes_suc / ritmo_necesario * 100) if ritmo_necesario > 0 else 0
+
+            # Forecast para la sucursal
+            serie_suc = df_suc.groupby('FECHA')['IMP_PRIMA'].sum().sort_index()
+            serie_data_suc = (
+                tuple(str(d) for d in serie_suc.index),
+                tuple(float(v) for v in serie_suc.values),
+            )
+            fc_suc_result = compute_line_forecast(
+                serie_data_suc,
+                filters['conservative_factor'],
+                ref_year,
+                str(fecha_corte.date()),
+                steps=1
+            )
+
+            forecast_suc = fc_suc_result['fc_valores'][0] if fc_suc_result['fc_valores'] else 0.0
+            if fc_suc_result.get('is_partial'):
+                forecast_suc = nowcast_cached(prod_mes_suc, fecha_corte, forecast_suc)
+
+            forecast_ejec_suc = (forecast_suc / presup_mes_suc * 100) if presup_mes_suc > 0 else 0
+
+            if cumplimiento_ritmo >= 90:
+                indicador = "🐰⚡"
+                color_barra = '#16a34a'
+            elif cumplimiento_ritmo >= 80:
+                indicador = "🐢"
+                color_barra = '#f59e0b'
+            else:
+                indicador = "🐢"
+                color_barra = '#ef4444'
+
+            rendimiento_sucursales.append({
+                'Sucursal': f"{indicador} {sucursal}",
+                'Producción': prod_mes_suc,
+                'Presupuesto': presup_mes_suc,
+                '% Avance': (prod_mes_suc / presup_mes_suc * 100),
+                'Ritmo (%)': cumplimiento_ritmo,
+                'Forecast': forecast_suc,
+                'Forecast %': forecast_ejec_suc,
+                'Color': color_barra
+            })
+
+        if rendimiento_sucursales:
+            df_rend = pd.DataFrame(rendimiento_sucursales)
+            df_rend = df_rend.sort_values('Ritmo (%)', ascending=True)
+
+            fig_suc = go.Figure()
+
+            fig_suc.add_trace(go.Bar(
+                y=df_rend['Sucursal'],
+                x=df_rend['Ritmo (%)'],
+                orientation='h',
+                marker=dict(color=df_rend['Color']),
+                text=df_rend['Ritmo (%)'].apply(lambda x: f"{x:.1f}%"),
+                textposition='outside',
+                customdata=df_rend[['Producción', 'Presupuesto', 'Forecast', 'Forecast %']].values,
+                hovertemplate=(
+                    '<b>%{y}</b><br>'
+                    'Producción: $%{customdata[0]:,.0f}<br>'
+                    'Presupuesto: $%{customdata[1]:,.0f}<br>'
+                    'Ritmo: %{x:.1f}%<br>'
+                    'Forecast: $%{customdata[2]:,.0f}<br>'
+                    'Forecast Ejec: %{customdata[3]:.1f}%'
+                    '<extra></extra>'
+                )
+            ))
+
+            fig_suc.add_vline(x=100, line_dash="dash", line_color="white", opacity=0.5)
+
+            fig_suc.update_layout(
+                title="Ritmo Comercial por Sucursal (🐰⚡ = Buen ritmo, 🐢 = Ritmo lento)",
+                xaxis_title="% Cumplimiento del Ritmo Necesario",
+                yaxis_title="",
+                template="plotly_dark",
+                height=max(400, len(df_rend) * 40),
+                showlegend=False,
+                margin=dict(l=10, r=10, t=40, b=10),
+            )
+
+            st.plotly_chart(fig_suc, use_container_width=True)
+            st.caption("💡 El 100% indica que la sucursal lleva el ritmo exacto para cumplir el presupuesto mensual")
+        else:
+            st.info("No hay datos de sucursales para mostrar con los filtros seleccionados")
 
 # ========== TAB 3: FIANZAS ==========
 with tabs[2]:
