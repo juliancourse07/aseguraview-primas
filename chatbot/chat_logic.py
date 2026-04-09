@@ -8,6 +8,46 @@ from typing import Any
 from .prompts import SYSTEM_PROMPT_TEMPLATE
 
 
+@st.cache_data(ttl=300, show_spinner=False)
+def build_context_cached(
+    fecha_corte_str: str,
+    linea_negocio: str,
+    forecast_mensual: float,
+    produccion_parcial: float,
+    presupuesto_mensual: float,
+    acumulado_anio: float,
+    presupuesto_anual: float,
+    dias_transcurridos: int,
+    dias_totales: int,
+    sucursales_info: str,
+    lineas_disponibles: str,
+    ajuste_conservador: float,
+) -> str:
+    """Versión cacheada de build_context con parámetros simples y hashables.
+
+    Cache automático de 5 minutos; se invalida cuando cambia cualquier parámetro.
+    """
+    avance_mes_pct = (produccion_parcial / presupuesto_mensual * 100) if presupuesto_mensual > 0 else 0.0
+    avance_anual_pct = (acumulado_anio / presupuesto_anual * 100) if presupuesto_anual > 0 else 0.0
+
+    return SYSTEM_PROMPT_TEMPLATE.format(
+        fecha_corte=fecha_corte_str,
+        linea_negocio=linea_negocio,
+        forecast_mensual=forecast_mensual,
+        produccion_parcial=produccion_parcial,
+        dias_transcurridos=dias_transcurridos,
+        dias_totales=dias_totales,
+        presupuesto_mensual=presupuesto_mensual,
+        avance_mes_pct=avance_mes_pct,
+        acumulado_anio=acumulado_anio,
+        presupuesto_anual=presupuesto_anual,
+        avance_anual_pct=avance_anual_pct,
+        sucursales_info=sucursales_info,
+        lineas_disponibles=lineas_disponibles,
+        ajuste_conservador=ajuste_conservador,
+    )
+
+
 def build_context(
     fecha_corte: Any,
     filters: dict,
@@ -21,6 +61,9 @@ def build_context(
     dias_totales: int = 0,
 ) -> str:
     """Construye el prompt del sistema con contexto del dashboard.
+
+    Extrae parámetros simples y delega a :func:`build_context_cached` para
+    aprovechar el caché de Streamlit (TTL 5 minutos).
 
     Args:
         fecha_corte: Timestamp de la fecha de corte actual.
@@ -58,24 +101,21 @@ def build_context(
     else:
         lineas_disponibles = 'No disponibles'
 
-    avance_mes_pct = (produccion_parcial / presupuesto_mensual * 100) if presupuesto_mensual > 0 else 0.0
-    avance_anual_pct = (acumulado_anio / presupuesto_anual * 100) if presupuesto_anual > 0 else 0.0
+    fecha_corte_str = fecha_corte.strftime('%d/%m/%Y') if hasattr(fecha_corte, 'strftime') else str(fecha_corte)
 
-    return SYSTEM_PROMPT_TEMPLATE.format(
-        fecha_corte=fecha_corte.strftime('%d/%m/%Y') if hasattr(fecha_corte, 'strftime') else str(fecha_corte),
-        linea_negocio=linea_negocio,
-        forecast_mensual=forecast_mensual,
-        produccion_parcial=produccion_parcial,
-        dias_transcurridos=dias_transcurridos,
-        dias_totales=dias_totales,
-        presupuesto_mensual=presupuesto_mensual,
-        avance_mes_pct=avance_mes_pct,
-        acumulado_anio=acumulado_anio,
-        presupuesto_anual=presupuesto_anual,
-        avance_anual_pct=avance_anual_pct,
-        sucursales_info=sucursales_info,
-        lineas_disponibles=lineas_disponibles,
-        ajuste_conservador=filters.get('ajuste_pct', 0.0),
+    return build_context_cached(
+        fecha_corte_str=fecha_corte_str,
+        linea_negocio=str(linea_negocio),
+        forecast_mensual=float(forecast_mensual),
+        produccion_parcial=float(produccion_parcial),
+        presupuesto_mensual=float(presupuesto_mensual),
+        acumulado_anio=float(acumulado_anio),
+        presupuesto_anual=float(presupuesto_anual),
+        dias_transcurridos=int(dias_transcurridos),
+        dias_totales=int(dias_totales),
+        sucursales_info=str(sucursales_info),
+        lineas_disponibles=str(lineas_disponibles),
+        ajuste_conservador=float(filters.get('ajuste_pct', 0.0)),
     )
 
 
