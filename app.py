@@ -31,7 +31,7 @@ from componentes.tables import df_to_html
 from componentes.charts import render_forecast_chart
 
 # Chatbot IA
-from chatbot import render_chat_button, render_chat_panel, build_context
+from chatbot import render_chat_button, render_chat_panel, render_chat_toggle_button, build_context
 
 # ==================== CONSTANTS ====================
 # Indicadores visuales para el gráfico de ritmo comercial por sucursal
@@ -131,6 +131,10 @@ body,.stApp {background:var(--bg);color:var(--fg);}
 # Inyectar CSS del botón flotante del chatbot
 render_chat_button()
 
+# Inicializar estado del chatbot temprano (antes de cualquier condicional)
+if "chat_open" not in st.session_state:
+    st.session_state.chat_open = False
+
 # ==================== LOAD DATA ====================
 @st.cache_data(ttl=1800, show_spinner=True)
 def load_and_process_data():
@@ -199,6 +203,42 @@ def compute_line_forecast(serie_data: tuple, conservative_factor: float,
         'is_partial': is_partial,
         'cur_month_str': str(cur_month) if cur_month is not None else None,
     }
+
+
+@st.cache_data(ttl=300)
+def compute_chat_forecast_cached(
+    serie_fechas: tuple,
+    serie_valores: tuple,
+    conservative_factor: float,
+    anio: int,
+    fecha_corte_str: str,
+    linea_plus: str,
+) -> float:
+    """Calcula forecast simplificado para el chatbot (cacheado 5 min).
+
+    Returns:
+        float: Forecast mensual ajustado por línea
+    """
+    serie = pd.Series(list(serie_valores), index=pd.to_datetime(list(serie_fechas)))
+    engine = ForecastEngine(conservative_factor=conservative_factor)
+    fecha_corte_ts = pd.Timestamp(fecha_corte_str)
+
+    serie_clean = engine.sanitize_series(serie, anio)
+    serie_train, _, _ = engine.split_series_exclude_partial(serie_clean, anio, fecha_corte_ts)
+
+    _, fc_df, _, _ = engine.fit_forecast(serie_train, steps=1)
+
+    if fc_df.empty:
+        return 0.0
+
+    forecast_val = float(fc_df['Forecast_mensual'].iloc[0])
+
+    if linea_plus == "FIANZAS":
+        forecast_val *= 0.95
+    elif linea_plus != "SOAT":
+        forecast_val *= 0.99
+
+    return forecast_val
 
 
 df, fecha_corte = load_and_process_data()
@@ -275,7 +315,14 @@ with tabs[1]:
     # Radio buttons para seleccionar vista y selector de Quarter
     col_vista, col_quarter = st.columns([2, 2])
     with col_vista:
-        vista_mes = st.radio("", ["Mes", "Año", "Acumulado Mes"], horizontal=True, index=0, key="vista_tipo")
+        vista_mes = st.radio(
+            "Selecciona vista del resumen",
+            ["Mes", "Año", "Acumulado Mes"],
+            horizontal=True,
+            index=0,
+            key="vista_tipo",
+            label_visibility="collapsed",
+        )
     with col_quarter:
         QUARTER_MONTHS = {
             "Todos": list(range(1, 13)),
@@ -1018,75 +1065,65 @@ with tabs[3]:
             else:
                 st.warning("No se pudo generar presupuesto con los filtros actuales")
 
-# ==================== CHATBOT IA ====================
-# Calcular métricas clave para el contexto del chatbot
-_periodo_actual_chat = pd.Timestamp(year=fecha_corte.year, month=fecha_corte.month, day=1)
+# ==================== CHATBOT IA (LAZY LOADED) ====================
+# El botón de toggle siempre se muestra (ligero, sin computación pesada)
+render_chat_toggle_button()
 
-_serie_chat = df_filtered.groupby('FECHA')['IMP_PRIMA'].sum().sort_index()
+# El contexto y panel del chat solo se calculan cuando el usuario lo abre
+if st.session_state.chat_open:
+    with st.spinner("🤖 Preparando asistente IA..."):
+        _periodo_actual_chat = pd.Timestamp(year=fecha_corte.year, month=fecha_corte.month, day=1)
+        _serie_chat = df_filtered.groupby('FECHA')['IMP_PRIMA'].sum().sort_index()
 
-# Producción parcial del mes actual (hasta fecha de corte)
-_prod_parcial_chat = float(
-    df_filtered[df_filtered['FECHA'] == _periodo_actual_chat]['IMP_PRIMA'].sum()
-)
+        _prod_parcial_chat = float(
+            df_filtered[df_filtered['FECHA'] == _periodo_actual_chat]['IMP_PRIMA'].sum()
+        )
 
-# Presupuesto mensual del período actual
-_presup_mensual_chat = float(
-    df_filtered[df_filtered['FECHA'] == _periodo_actual_chat]['PRESUPUESTO'].sum()
-    if 'PRESUPUESTO' in df_filtered.columns else 0.0
-)
+        _presup_mensual_chat = float(
+            df_filtered[df_filtered['FECHA'] == _periodo_actual_chat]['PRESUPUESTO'].sum()
+            if 'PRESUPUESTO' in df_filtered.columns else 0.0
+        )
 
-# Acumulado YTD (meses cerrados del año actual)
-_acumulado_anio_chat = float(
-    df_filtered[
-        (df_filtered['FECHA'].dt.year == filters['anio_analisis']) &
-        (df_filtered['FECHA'].dt.month < fecha_corte.month)
-    ]['IMP_PRIMA'].sum()
-)
+        _acumulado_anio_chat = float(
+            df_filtered[
+                (df_filtered['FECHA'].dt.year == filters['anio_analisis']) &
+                (df_filtered['FECHA'].dt.month < fecha_corte.month)
+            ]['IMP_PRIMA'].sum()
+        )
 
-# Presupuesto anual
-_presup_anual_chat = float(
-    df_filtered[
-        df_filtered['FECHA'].dt.year == filters['anio_analisis']
-    ]['PRESUPUESTO'].sum()
-    if 'PRESUPUESTO' in df_filtered.columns else 0.0
-)
+        _presup_anual_chat = float(
+            df_filtered[
+                df_filtered['FECHA'].dt.year == filters['anio_analisis']
+            ]['PRESUPUESTO'].sum()
+            if 'PRESUPUESTO' in df_filtered.columns else 0.0
+        )
 
-# Días hábiles del mes para el chatbot
-_primer_dia_chat, _ultimo_dia_chat = get_month_range(fecha_corte.year, fecha_corte.month)
-_dias_totales_chat = business_days_left(_primer_dia_chat, _ultimo_dia_chat)
-_dias_restantes_chat = business_days_left(fecha_corte, _ultimo_dia_chat)
-_dias_transcurridos_chat = max(0, _dias_totales_chat - _dias_restantes_chat)
+        _primer_dia_chat, _ultimo_dia_chat = get_month_range(fecha_corte.year, fecha_corte.month)
+        _dias_totales_chat = business_days_left(_primer_dia_chat, _ultimo_dia_chat)
+        _dias_restantes_chat = business_days_left(fecha_corte, _ultimo_dia_chat)
+        _dias_transcurridos_chat = max(0, _dias_totales_chat - _dias_restantes_chat)
 
-# Forecast mensual simplificado (usando motor principal ya calculado si está disponible)
-try:
-    _engine_chat = ForecastEngine(conservative_factor=filters['conservative_factor'])
-    _serie_clean_chat = _engine_chat.sanitize_series(_serie_chat, filters['anio_analisis'])
-    _serie_train_chat, _, _ = _engine_chat.split_series_exclude_partial(
-        _serie_clean_chat, filters['anio_analisis'], fecha_corte
-    )
-    _, _fc_chat, _, _ = _engine_chat.fit_forecast(_serie_train_chat, steps=1)
-    _forecast_mensual_chat = float(_fc_chat['Forecast_mensual'].iloc[0]) if not _fc_chat.empty else 0.0
-    if filters['linea_plus'] == "FIANZAS":
-        _forecast_mensual_chat *= 0.95
-    elif filters['linea_plus'] != "SOAT":
-        _forecast_mensual_chat *= 0.99
-except Exception:
-    _forecast_mensual_chat = 0.0
+        _forecast_mensual_chat = compute_chat_forecast_cached(
+            serie_fechas=tuple(str(d) for d in _serie_chat.index),
+            serie_valores=tuple(float(v) for v in _serie_chat.values),
+            conservative_factor=filters['conservative_factor'],
+            anio=filters['anio_analisis'],
+            fecha_corte_str=str(fecha_corte.date()),
+            linea_plus=filters['linea_plus'],
+        )
 
-# Construir prompt del sistema con contexto del dashboard
-_chat_system_prompt = build_context(
-    fecha_corte=fecha_corte,
-    filters=filters,
-    df_filtered=df_filtered,
-    forecast_mensual=_forecast_mensual_chat,
-    produccion_parcial=_prod_parcial_chat,
-    presupuesto_mensual=_presup_mensual_chat,
-    acumulado_anio=_acumulado_anio_chat,
-    presupuesto_anual=_presup_anual_chat,
-    dias_transcurridos=_dias_transcurridos_chat,
-    dias_totales=_dias_totales_chat,
-)
+        _chat_system_prompt = build_context(
+            fecha_corte=fecha_corte,
+            filters=filters,
+            df_filtered=df_filtered,
+            forecast_mensual=_forecast_mensual_chat,
+            produccion_parcial=_prod_parcial_chat,
+            presupuesto_mensual=_presup_mensual_chat,
+            acumulado_anio=_acumulado_anio_chat,
+            presupuesto_anual=_presup_anual_chat,
+            dias_transcurridos=_dias_transcurridos_chat,
+            dias_totales=_dias_totales_chat,
+        )
 
-# Renderizar panel del chatbot
-render_chat_panel(_chat_system_prompt)
+    render_chat_panel(_chat_system_prompt)
 

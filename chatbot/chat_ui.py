@@ -206,42 +206,39 @@ def _init_session_state() -> None:
         st.session_state.chat_input_value = ""
 
 
+def render_chat_toggle_button() -> None:
+    """Renderiza SOLO el botón de toggle del chatbot en el sidebar (sin computación pesada).
+
+    Este botón es ligero y se renderiza siempre. El panel completo solo se carga
+    cuando el usuario hace clic y st.session_state.chat_open == True.
+    """
+    _init_session_state()
+
+    with st.sidebar:
+        st.markdown("---")
+        st.markdown("### 🤖 Asistente IA")
+
+        if st.session_state.chat_open:
+            if st.button("🔽 Cerrar chat IA", key="close_chat_btn", use_container_width=True):
+                st.session_state.chat_open = False
+                st.rerun()
+        else:
+            if st.button("💬 Abrir chat IA", key="open_chat_btn", use_container_width=True):
+                st.session_state.chat_open = True
+                st.rerun()
+
+
 def render_chat_panel(system_prompt: str) -> None:
-    """Renderiza el botón flotante y, si está abierto, el panel de chat.
+    """Renderiza el panel completo del chatbot (asume que ya está abierto).
+
+    Esta función NO renderiza el botón de toggle — eso lo hace
+    render_chat_toggle_button() de forma independiente.
 
     Args:
         system_prompt: Prompt del sistema con contexto del dashboard,
                        generado por `chatbot.chat_logic.build_context`.
     """
     _init_session_state()
-
-    # ── Botón flotante ─────────────────────────────────────────────────────
-    col_fab = st.columns([1])[0]
-    with col_fab:
-        badge_html = ""
-        if not st.session_state.chat_open and not st.session_state.chat_history:
-            badge_html = '<span class="chat-fab-badge">1</span>'
-
-        st.markdown(
-            f"""
-            <div class="chat-fab-container">
-                <div class="chat-fab" title="Abrir Asistente IA">
-                    {'✕' if st.session_state.chat_open else '🤖'}
-                </div>
-                {badge_html}
-            </div>
-            """,
-            unsafe_allow_html=True,
-        )
-
-    # Botón real invisible (Streamlit no permite clicks en HTML arbitrario)
-    label_fab = "Cerrar chat IA" if st.session_state.chat_open else "Abrir chat IA 🤖"
-    if st.sidebar.button(label_fab, key="fab_toggle", use_container_width=True):
-        st.session_state.chat_open = not st.session_state.chat_open
-        st.rerun()
-
-    if not st.session_state.chat_open:
-        return
 
     # ── Panel de chat ──────────────────────────────────────────────────────
     st.markdown(
