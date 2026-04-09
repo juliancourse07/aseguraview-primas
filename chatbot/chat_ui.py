@@ -314,7 +314,8 @@ def _send_message(user_message: str, system_prompt: str) -> None:
         ai_response = get_ai_response(
             user_message=user_message,
             system_prompt=system_prompt,
-            chat_history=st.session_state.chat_history[:-1],  # Excluir el mensaje recién agregado
+            # Pass history without the user message just appended, as it is sent separately
+            chat_history=st.session_state.chat_history[:-1],
         )
 
     st.session_state.chat_history.append({"role": "assistant", "content": ai_response})
