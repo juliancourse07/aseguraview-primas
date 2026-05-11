@@ -771,9 +771,9 @@ with tabs[1]:
         st.markdown("---")
         pivot_deficit = pd.DataFrame()
         pivot_brecha = pd.DataFrame()
-        _plotly_template = "plotly_dark" if st.session_state.get("tema", "oscuro") == "oscuro" else "plotly_white"
-        _plotly_bg = "#071428" if st.session_state.get("tema", "oscuro") == "oscuro" else "#f0f4f8"
-        _plotly_font_color = "#f3f4f6" if st.session_state.get("tema", "oscuro") == "oscuro" else "#1e293b"
+        plotly_template = "plotly_dark" if st.session_state.get("tema", "oscuro") == "oscuro" else "plotly_white"
+        plotly_bg = "#071428" if st.session_state.get("tema", "oscuro") == "oscuro" else "#f0f4f8"
+        plotly_font_color = "#f3f4f6" if st.session_state.get("tema", "oscuro") == "oscuro" else "#1e293b"
 
         with st.expander("🔥 Mapa de Calor 1 — Déficit vs Meta por Sucursal y Línea", expanded=False):
             deficit_df = pd.DataFrame(columns=['SUCURSAL', 'LINEA_PLUS', 'deficit'])
@@ -908,13 +908,13 @@ with tabs[1]:
                     fig_heat.update_layout(
                         title=dict(
                             text=f"🔥 Déficit vs Meta — {vista_title} | {periodo_actual.strftime('%m/%Y')} | Intensidad = Mayor brecha",
-                            font=dict(size=16, color=_plotly_font_color),
+                            font=dict(size=16, color=plotly_font_color),
                             x=0.02,
                         ),
-                        template=_plotly_template,
-                        paper_bgcolor=_plotly_bg,
-                        plot_bgcolor=_plotly_bg,
-                        font=dict(color=_plotly_font_color),
+                        template=plotly_template,
+                        paper_bgcolor=plotly_bg,
+                        plot_bgcolor=plotly_bg,
+                        font=dict(color=plotly_font_color),
                         height=max(350, len(pivot_deficit) * 50 + 120),
                         margin=dict(l=10, r=10, t=60, b=10),
                         xaxis=dict(
@@ -923,7 +923,7 @@ with tabs[1]:
                             title="",
                         ),
                         yaxis=dict(
-                            tickfont=dict(size=11, color=_plotly_font_color),
+                            tickfont=dict(size=11, color=plotly_font_color),
                             title="",
                             autorange="reversed",
                         ),
@@ -1022,17 +1022,17 @@ with tabs[1]:
                     fig_brecha.update_layout(
                         title=dict(
                             text=f"📉 Brecha vs Previo — {periodo_actual.strftime('%m/%Y')} | Intensidad = Meta más alta que año anterior",
-                            font=dict(size=16, color=_plotly_font_color),
+                            font=dict(size=16, color=plotly_font_color),
                             x=0.02,
                         ),
-                        template=_plotly_template,
-                        paper_bgcolor=_plotly_bg,
-                        plot_bgcolor=_plotly_bg,
-                        font=dict(color=_plotly_font_color),
+                        template=plotly_template,
+                        paper_bgcolor=plotly_bg,
+                        plot_bgcolor=plotly_bg,
+                        font=dict(color=plotly_font_color),
                         height=max(350, len(pivot_brecha) * 50 + 120),
                         margin=dict(l=10, r=10, t=60, b=10),
                         xaxis=dict(side="top", tickfont=dict(size=12, color="#f59e0b"), title=""),
-                        yaxis=dict(tickfont=dict(size=11, color=_plotly_font_color), title="", autorange="reversed"),
+                        yaxis=dict(tickfont=dict(size=11, color=plotly_font_color), title="", autorange="reversed"),
                     )
 
                     st.plotly_chart(fig_brecha, use_container_width=True)
