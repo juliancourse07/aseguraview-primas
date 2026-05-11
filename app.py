@@ -280,7 +280,8 @@ with col_titulo:
     </div>
     """, unsafe_allow_html=True)
 with col_tema:
-    if st.button("☀️" if st.session_state.tema == "oscuro" else "🌙", key="btn_tema", help="Cambiar modo claro/oscuro"):
+    btn_tema_label = "☀️ Tema" if st.session_state.tema == "oscuro" else "🌙 Tema"
+    if st.button(btn_tema_label, key="btn_tema", help="Cambiar modo claro/oscuro"):
         st.session_state.tema = "claro" if st.session_state.tema == "oscuro" else "oscuro"
         st.rerun()
 
@@ -1045,11 +1046,24 @@ with tabs[1]:
         with BytesIO() as buf:
             with pd.ExcelWriter(buf, engine="openpyxl") as writer:
                 df_resumen.to_excel(writer, sheet_name="Resumen_Lineas", index=False)
-                pivot_deficit.to_excel(writer, sheet_name="Deficit_vs_Meta")
-                pivot_brecha.to_excel(writer, sheet_name="Brecha_vs_Previo")
+                if pivot_deficit.empty:
+                    pd.DataFrame([{
+                        "SUCURSAL": "",
+                        "Nota": "Sin datos para Deficit vs Meta con los filtros actuales"
+                    }]).to_excel(writer, sheet_name="Deficit_vs_Meta", index=False)
+                else:
+                    pivot_deficit.to_excel(writer, sheet_name="Deficit_vs_Meta")
+
+                if pivot_brecha.empty:
+                    pd.DataFrame([{
+                        "SUCURSAL": "",
+                        "Nota": "Sin datos para Brecha vs Previo con los filtros actuales"
+                    }]).to_excel(writer, sheet_name="Brecha_vs_Previo", index=False)
+                else:
+                    pivot_brecha.to_excel(writer, sheet_name="Brecha_vs_Previo")
             excel_bytes = buf.getvalue()
 
-        vista_label = {"Mes": "mes", "Año": "anio", "Acumulado Mes": "acumulado"}[vista_mes]
+        vista_label = {"Mes": "mes", "Año": "anio", "Acumulado Mes": "acumulado"}.get(vista_mes, "general")
         st.download_button(
             label="⬇️ Exportar resumen + mapas de calor a Excel",
             data=excel_bytes,
