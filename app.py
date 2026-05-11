@@ -857,7 +857,13 @@ with tabs[1]:
             with pd.ExcelWriter(buf, engine="openpyxl") as writer:
                 df_resumen_export = df_resumen.copy()
                 df_resumen_export.to_excel(writer, sheet_name="Resumen_Líneas", index=False)
-                pivot_deficit.to_excel(writer, sheet_name="Mapa_Calor_Déficit")
+                if pivot_deficit.empty:
+                    pd.DataFrame([{
+                        "SUCURSAL": "",
+                        "Nota": "Sin datos para mapa de calor con los filtros actuales"
+                    }]).to_excel(writer, sheet_name="Mapa_Calor_Déficit", index=False)
+                else:
+                    pivot_deficit.to_excel(writer, sheet_name="Mapa_Calor_Déficit")
             excel_bytes = buf.getvalue()
 
         vista_slug = vista_mes.lower().replace(" ", "_")
