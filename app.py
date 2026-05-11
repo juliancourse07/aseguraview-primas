@@ -57,10 +57,7 @@ st.set_page_config(
     layout=LAYOUT
 )
 
-if "tema" not in st.session_state:
-    st.session_state.tema = "oscuro"
-
-css_oscuro = """
+st.markdown("""
 <style>
 :root { 
     --bg:#071428; 
@@ -74,129 +71,18 @@ css_oscuro = """
 }
 body,.stApp {background:var(--bg);color:var(--fg);}
 .block-container{padding-top:.6rem;}
-.card{
-    background:var(--card);
-    border:1px solid rgba(255,255,255,0.04);
-    border-radius:12px;
-    padding:12px;
-    margin-bottom:12px;
-}
-.table-wrap{
-    overflow:auto;
-    border:1px solid rgba(255,255,255,0.04);
-    border-radius:12px;
-    background:transparent;
-    padding:6px;
-}
-.tbl{
-    width:100%;
-    border-collapse:collapse;
-    font-size:14px;
-    color:var(--fg);
-}
-.tbl thead th{
-    position:sticky;
-    top:0;
-    background:#033b63;
-    color:#ffffff;
-    padding:10px;
-    border-bottom:1px solid rgba(255,255,255,0.06);
-    text-align:left;
-}
-.tbl td{
-    padding:8px;
-    border-bottom:1px dashed rgba(255,255,255,0.03);
-    white-space:nowrap;
-    color:var(--fg);
-}
+.card{background:var(--card);border:1px solid rgba(255,255,255,0.04);border-radius:12px;padding:12px;margin-bottom:12px;}
+.table-wrap{overflow:auto;border:1px solid rgba(255,255,255,0.04);border-radius:12px;background:transparent;padding:6px;}
+.tbl{width:100%;border-collapse:collapse;font-size:14px;color:var(--fg);}
+.tbl thead th{position:sticky;top:0;background:#033b63;color:#ffffff;padding:10px;border-bottom:1px solid rgba(255,255,255,0.06);text-align:left;}
+.tbl td{padding:8px;border-bottom:1px dashed rgba(255,255,255,0.03);white-space:nowrap;color:var(--fg);}
 .bad{color:var(--down);font-weight:700;}
 .ok{color:var(--up);font-weight:700;}
 .near{color:var(--near);font-weight:700;}
 .muted{color:var(--muted);}
 .small{font-size:12px;color:var(--muted);}
-.vertical-summary{display:flex;gap:12px;flex-wrap:wrap;}
-.vert-left{flex:0 0 360px;}
-.vert-right{flex:1;min-height:160px;}
-.vrow{
-    display:flex;
-    justify-content:space-between;
-    padding:8px 10px;
-    border-bottom:1px dashed rgba(255,255,255,0.03);
-}
-.vtitle{color:var(--muted);}
-.vvalue{font-weight:700;color:var(--fg);}
 </style>
-"""
-
-css_claro = """
-<style>
-:root { 
-    --bg:#f0f4f8; 
-    --fg:#1e293b; 
-    --accent:#0369a1; 
-    --muted:#475569; 
-    --card:rgba(0,0,0,0.04); 
-    --up:#16a34a; 
-    --down:#ef4444; 
-    --near:#d97706; 
-}
-body,.stApp {background:var(--bg);color:var(--fg);}
-.block-container{padding-top:.6rem;}
-.card{
-    background:var(--card);
-    border:1px solid rgba(0,0,0,0.08);
-    border-radius:12px;
-    padding:12px;
-    margin-bottom:12px;
-}
-.table-wrap{
-    overflow:auto;
-    border:1px solid rgba(0,0,0,0.08);
-    border-radius:12px;
-    background:transparent;
-    padding:6px;
-}
-.tbl{
-    width:100%;
-    border-collapse:collapse;
-    font-size:14px;
-    color:var(--fg);
-}
-.tbl thead th{
-    position:sticky;
-    top:0;
-    background:#0369a1;
-    color:#ffffff;
-    padding:10px;
-    border-bottom:1px solid rgba(0,0,0,0.10);
-    text-align:left;
-}
-.tbl td{
-    padding:8px;
-    border-bottom:1px dashed rgba(0,0,0,0.06);
-    white-space:nowrap;
-    color:var(--fg);
-}
-.bad{color:var(--down);font-weight:700;}
-.ok{color:var(--up);font-weight:700;}
-.near{color:var(--near);font-weight:700;}
-.muted{color:var(--muted);}
-.small{font-size:12px;color:var(--muted);}
-.vertical-summary{display:flex;gap:12px;flex-wrap:wrap;}
-.vert-left{flex:0 0 360px;}
-.vert-right{flex:1;min-height:160px;}
-.vrow{
-    display:flex;
-    justify-content:space-between;
-    padding:8px 10px;
-    border-bottom:1px dashed rgba(0,0,0,0.06);
-}
-.vtitle{color:var(--muted);}
-.vvalue{font-weight:700;color:var(--fg);}
-</style>
-"""
-
-st.markdown(css_oscuro if st.session_state.tema == "oscuro" else css_claro, unsafe_allow_html=True)
+""", unsafe_allow_html=True)
 
 # ==================== LOAD DATA ====================
 @st.cache_data(ttl=1800, show_spinner=True)
@@ -271,19 +157,12 @@ def compute_line_forecast(serie_data: tuple, conservative_factor: float,
 df, fecha_corte = load_and_process_data()
 
 # ==================== HEADER ====================
-col_titulo, col_tema = st.columns([8, 1])
-with col_titulo:
-    st.markdown(f"""
-    <div style="display:flex;align-items:center;gap:18px;margin-bottom:6px">
-      <div style="font-size:26px;font-weight:800;color:var(--fg)">{PAGE_ICON} {PAGE_TITLE}</div>
-      <div style="opacity:.85;color:var(--muted);">Corte: {fecha_corte.strftime('%d/%m/%Y')}</div>
-    </div>
-    """, unsafe_allow_html=True)
-with col_tema:
-    btn_tema_label = "☀️ Tema" if st.session_state.tema == "oscuro" else "🌙 Tema"
-    if st.button(btn_tema_label, key="btn_tema", help="Cambiar modo claro/oscuro"):
-        st.session_state.tema = "claro" if st.session_state.tema == "oscuro" else "oscuro"
-        st.rerun()
+st.markdown(f"""
+<div style="display:flex;align-items:center;gap:18px;margin-bottom:6px">
+  <div style="font-size:26px;font-weight:800;color:#f3f4f6">{PAGE_ICON} {PAGE_TITLE}</div>
+  <div style="opacity:.85;color:var(--muted);">Corte: {fecha_corte.strftime('%d/%m/%Y')}</div>
+</div>
+""", unsafe_allow_html=True)
 
 st.caption("Nowcast, cierre estimado del año, ejecución vs presupuesto y propuesta 2026")
 
@@ -770,302 +649,138 @@ with tabs[1]:
 
         st.markdown("---")
         pivot_deficit = pd.DataFrame()
-        pivot_brecha = pd.DataFrame()
-        plotly_template = "plotly_dark" if st.session_state.get("tema", "oscuro") == "oscuro" else "plotly_white"
-        plotly_bg = "#071428" if st.session_state.get("tema", "oscuro") == "oscuro" else "#f0f4f8"
-        plotly_font_color = "#f3f4f6" if st.session_state.get("tema", "oscuro") == "oscuro" else "#1e293b"
 
         with st.expander("🔥 Mapa de Calor 1 — Déficit vs Meta por Sucursal y Línea", expanded=False):
-            deficit_df = pd.DataFrame(columns=['SUCURSAL', 'LINEA_PLUS', 'deficit'])
             if 'SUCURSAL' not in df_filtered.columns:
                 st.info("No hay columna SUCURSAL disponible para mostrar la matriz")
             elif 'PRESUPUESTO' not in df_filtered.columns:
                 st.info("📊 No se puede construir el mapa de calor porque no existe la columna PRESUPUESTO.")
             else:
+                # ── Obtener déficit por línea desde df_resumen (excluir fila TOTAL) ──
+                df_res_sin_total = df_resumen.iloc[:-1].copy()
+                deficit_por_linea = dict(zip(df_res_sin_total['LINEA_PLUS'], df_res_sin_total['Déficit vs Meta']))
+
+                # ── Obtener PRESUPUESTO por sucursal×linea según vista activa ──
                 if vista_mes == "Mes":
-                    df_heat = df_filtered[
+                    df_pres_suc = df_filtered[
                         (df_filtered['FECHA'] == periodo_actual) &
                         (df_filtered['FECHA'].dt.month.isin(meses_quarter))
-                    ].copy()
-                    if not df_heat.empty:
-                        deficit_df = df_heat.groupby(['SUCURSAL', 'LINEA_PLUS'], dropna=False).agg({
-                            'PRESUPUESTO': 'sum',
-                            'IMP_PRIMA': 'sum'
-                        }).reset_index()
-                        deficit_df['deficit'] = deficit_df['PRESUPUESTO'] - deficit_df['IMP_PRIMA']
+                    ].groupby(['SUCURSAL', 'LINEA_PLUS'], dropna=False)['PRESUPUESTO'].sum().reset_index()
                 elif vista_mes == "Año":
-                    df_heat = df_filtered[
+                    df_pres_suc = df_filtered[
                         (df_filtered['FECHA'].dt.year == ref_year) &
-                        (df_filtered['FECHA'].dt.month < fecha_corte.month) &
                         (df_filtered['FECHA'].dt.month.isin(meses_quarter))
-                    ].copy()
-                    if not df_heat.empty:
-                        deficit_df = df_heat.groupby(['SUCURSAL', 'LINEA_PLUS'], dropna=False).agg({
-                            'PRESUPUESTO': 'sum',
-                            'IMP_PRIMA': 'sum'
-                        }).reset_index()
-                        deficit_df['deficit'] = deficit_df['PRESUPUESTO'] - deficit_df['IMP_PRIMA']
-                else:
-                    df_heat = df_filtered[
+                    ].groupby(['SUCURSAL', 'LINEA_PLUS'], dropna=False)['PRESUPUESTO'].sum().reset_index()
+                else:  # Acumulado Mes
+                    df_pres_suc = df_filtered[
                         (df_filtered['FECHA'].dt.year == ref_year) &
                         (df_filtered['FECHA'].dt.month <= fecha_corte.month) &
                         (df_filtered['FECHA'].dt.month.isin(meses_quarter))
-                    ].copy()
-                    if not df_heat.empty:
-                        grouped_actual = df_heat.groupby(['SUCURSAL', 'LINEA_PLUS'], dropna=False).agg({
-                            'PRESUPUESTO': 'sum'
-                        }).reset_index()
+                    ].groupby(['SUCURSAL', 'LINEA_PLUS'], dropna=False)['PRESUPUESTO'].sum().reset_index()
 
-                        grouped_actual['IMP_CERRADOS'] = 0.0
-                        grouped_actual['FORECAST_MES_ACTUAL'] = 0.0
+                if df_pres_suc.empty:
+                    st.info("📊 No hay datos de presupuesto por sucursal para construir el mapa de calor.")
+                else:
+                    # Presupuesto total por línea (para calcular el peso de cada sucursal)
+                    pres_total_linea = df_pres_suc.groupby('LINEA_PLUS')['PRESUPUESTO'].sum()
 
-                        for idx_heat, row_heat in grouped_actual.iterrows():
-                            sucursal_h = row_heat['SUCURSAL']
-                            linea_h = row_heat['LINEA_PLUS']
-                            df_grp = df_filtered[
-                                (df_filtered['SUCURSAL'] == sucursal_h) &
-                                (df_filtered['LINEA_PLUS'] == linea_h)
-                            ].copy()
-                            if df_grp.empty:
-                                continue
+                    # Distribuir el déficit de cada línea proporcionalmente al peso presupuestal de cada sucursal
+                    def calcular_deficit_suc(row):
+                        total_linea = pres_total_linea.get(row['LINEA_PLUS'], 0)
+                        deficit_linea = deficit_por_linea.get(row['LINEA_PLUS'], 0)
+                        if total_linea > 0:
+                            return deficit_linea * (row['PRESUPUESTO'] / total_linea)
+                        return 0.0
 
-                            imp_cerrados = df_grp[
-                                (df_grp['FECHA'].dt.year == ref_year) &
-                                (df_grp['FECHA'].dt.month < fecha_corte.month) &
-                                (df_grp['FECHA'].dt.month.isin(meses_quarter))
-                            ]['IMP_PRIMA'].sum()
+                    df_pres_suc['deficit'] = df_pres_suc.apply(calcular_deficit_suc, axis=1)
 
-                            forecast_mes_actual = 0.0
-                            if fecha_corte.month in meses_quarter:
-                                prod_parcial_grp = df_grp[df_grp['FECHA'] == periodo_actual]['IMP_PRIMA'].sum()
-                                serie_grp = df_grp.groupby('FECHA')['IMP_PRIMA'].sum().sort_index()
-                                serie_data_grp = (
-                                    tuple(str(d) for d in serie_grp.index),
-                                    tuple(float(v) for v in serie_grp.values),
-                                )
-                                fc_grp_result = compute_line_forecast(
-                                    serie_data_grp,
-                                    filters['conservative_factor'],
-                                    ref_year,
-                                    str(fecha_corte.date()),
-                                    steps=1
-                                )
-                                forecast_mes_actual = fc_grp_result['fc_valores'][0] if fc_grp_result['fc_valores'] else 0.0
-                                if linea_h == "FIANZAS":
-                                    forecast_mes_actual = forecast_mes_actual * 0.95
-                                elif linea_h == "SOAT":
-                                    pass
-                                else:
-                                    forecast_mes_actual = forecast_mes_actual * 0.99
-                                if fc_grp_result.get('is_partial'):
-                                    forecast_mes_actual = nowcast_cached(prod_parcial_grp, fecha_corte, forecast_mes_actual)
+                    pivot_deficit = df_pres_suc.pivot_table(
+                        index='SUCURSAL', columns='LINEA_PLUS', values='deficit', aggfunc='sum', fill_value=0
+                    )
 
-                            grouped_actual.at[idx_heat, 'IMP_CERRADOS'] = imp_cerrados
-                            grouped_actual.at[idx_heat, 'FORECAST_MES_ACTUAL'] = forecast_mes_actual
+                    if pivot_deficit.empty:
+                        st.info("📊 No hay datos suficientes para mostrar el mapa de calor con los filtros actuales.")
+                    else:
+                        # Ordenar filas: mayor déficit total arriba
+                        pivot_deficit = pivot_deficit.loc[
+                            pivot_deficit.sum(axis=1).sort_values(ascending=False).index
+                        ]
 
-                        grouped_actual['deficit'] = grouped_actual['PRESUPUESTO'] - (
-                            grouped_actual['IMP_CERRADOS'] + grouped_actual['FORECAST_MES_ACTUAL']
+                        z_abs = np.abs(pivot_deficit.values)
+                        text_matrix = [[fmt_cop(v) for v in row] for row in pivot_deficit.values]
+
+                        fig_heat = go.Figure(data=go.Heatmap(
+                            z=z_abs,
+                            x=list(pivot_deficit.columns),
+                            y=list(pivot_deficit.index),
+                            text=text_matrix,
+                            texttemplate="%{text}",
+                            textfont={"size": 11, "color": "white"},
+                            colorscale=[
+                                [0.0, "#1a3a1a"],
+                                [0.3, "#7f1d1d"],
+                                [1.0, "#ef4444"],
+                            ],
+                            showscale=True,
+                            colorbar=dict(
+                                title="Déficit (abs)",
+                                tickformat="$,.0f",
+                                thickness=15,
+                                len=0.8,
+                            ),
+                            hovertemplate=(
+                                "<b>Sucursal:</b> %{y}<br>"
+                                "<b>Línea:</b> %{x}<br>"
+                                "<b>Déficit vs Meta:</b> %{text}<br>"
+                                "<extra></extra>"
+                            ),
+                        ))
+
+                        fig_heat.update_layout(
+                            title=dict(
+                                text=f"🔥 Déficit vs Meta — {vista_mes} | {periodo_actual.strftime('%m/%Y')} | Proyectado − Forecast por Sucursal y Línea",
+                                font=dict(size=15, color="#f3f4f6"),
+                                x=0.02,
+                            ),
+                            template="plotly_dark",
+                            paper_bgcolor="#071428",
+                            plot_bgcolor="#071428",
+                            font=dict(color="#f3f4f6"),
+                            height=max(350, len(pivot_deficit) * 50 + 120),
+                            margin=dict(l=10, r=10, t=70, b=10),
+                            xaxis=dict(
+                                side="top",
+                                tickfont=dict(size=12, color="#38bdf8"),
+                                title="",
+                            ),
+                            yaxis=dict(
+                                tickfont=dict(size=11, color="#f3f4f6"),
+                                title="",
+                                autorange="reversed",
+                            ),
                         )
-                        deficit_df = grouped_actual[['SUCURSAL', 'LINEA_PLUS', 'deficit']]
 
-            if not deficit_df.empty:
-                pivot_deficit = deficit_df.pivot_table(
-                    index='SUCURSAL', columns='LINEA_PLUS', values='deficit', aggfunc='sum', fill_value=0
-                )
-                if not pivot_deficit.empty:
-                    pivot_deficit = pivot_deficit.loc[pivot_deficit.sum(axis=1).sort_values(ascending=False).index]
-                    z_abs = np.abs(pivot_deficit.values)
-                    text_matrix = [[fmt_cop(v) for v in row] for row in pivot_deficit.values]
-
-                    fig_heat = go.Figure(data=go.Heatmap(
-                        z=z_abs,
-                        x=list(pivot_deficit.columns),
-                        y=list(pivot_deficit.index),
-                        text=text_matrix,
-                        texttemplate="%{text}",
-                        textfont={"size": 11, "color": "white"},
-                        colorscale=[
-                            [0.0, "#1a3a1a"],
-                            [0.3, "#7f1d1d"],
-                            [1.0, "#ef4444"],
-                        ],
-                        showscale=True,
-                        colorbar=dict(
-                            title="Déficit (abs)",
-                            tickformat="$,.0f",
-                            thickness=15,
-                            len=0.8,
-                        ),
-                        hovertemplate=(
-                            "<b>Sucursal:</b> %{y}<br>"
-                            "<b>Línea:</b> %{x}<br>"
-                            "<b>Déficit vs Meta:</b> %{text}<br>"
-                            "<extra></extra>"
-                        ),
-                    ))
-
-                    vista_title = vista_mes
-                    fig_heat.update_layout(
-                        title=dict(
-                            text=f"🔥 Déficit vs Meta — {vista_title} | {periodo_actual.strftime('%m/%Y')} | Intensidad = Mayor brecha",
-                            font=dict(size=16, color=plotly_font_color),
-                            x=0.02,
-                        ),
-                        template=plotly_template,
-                        paper_bgcolor=plotly_bg,
-                        plot_bgcolor=plotly_bg,
-                        font=dict(color=plotly_font_color),
-                        height=max(350, len(pivot_deficit) * 50 + 120),
-                        margin=dict(l=10, r=10, t=60, b=10),
-                        xaxis=dict(
-                            side="top",
-                            tickfont=dict(size=12, color="#38bdf8"),
-                            title="",
-                        ),
-                        yaxis=dict(
-                            tickfont=dict(size=11, color=plotly_font_color),
-                            title="",
-                            autorange="reversed",
-                        ),
-                    )
-
-                    st.plotly_chart(fig_heat, use_container_width=True)
-                    st.caption("🔴 Mayor intensidad = mayor brecha entre meta y forecast | Los valores negativos indican forecast que supera la meta")
-                else:
-                    st.info("📊 No hay datos suficientes para mostrar el mapa de calor con los filtros actuales.")
-            elif 'SUCURSAL' in df_filtered.columns:
-                st.info("📊 No hay datos suficientes para mostrar el mapa de calor con los filtros actuales.")
-
-        with st.expander("📉 Mapa de Calor 2 — Brecha vs Previo por Sucursal y Línea", expanded=False):
-            brecha_df = pd.DataFrame(columns=['SUCURSAL', 'LINEA_PLUS', 'brecha'])
-            if 'SUCURSAL' not in df_filtered.columns:
-                st.info("No hay columna SUCURSAL disponible para mostrar la matriz")
-            elif 'PRESUPUESTO' not in df_filtered.columns or 'IMP_PRIMA' not in df_filtered.columns:
-                st.info("📊 No hay columnas suficientes para construir la matriz de Brecha vs Previo.")
-            else:
-                prev_year = ref_year - 1
-                if vista_mes == "Mes":
-                    proyectado_mes = df_filtered[
-                        (df_filtered['FECHA'] == periodo_actual) &
-                        (df_filtered['FECHA'].dt.month.isin(meses_quarter))
-                    ].groupby(['SUCURSAL', 'LINEA_PLUS'], dropna=False)['PRESUPUESTO'].sum().reset_index(name='proyectado')
-                    previo_mes = df_filtered[
-                        (df_filtered['FECHA'].dt.year == prev_year) &
-                        (df_filtered['FECHA'].dt.month == periodo_actual.month) &
-                        (df_filtered['FECHA'].dt.month.isin(meses_quarter))
-                    ].groupby(['SUCURSAL', 'LINEA_PLUS'], dropna=False)['IMP_PRIMA'].sum().reset_index(name='previo')
-                    brecha_df = proyectado_mes.merge(previo_mes, on=['SUCURSAL', 'LINEA_PLUS'], how='outer').fillna(0)
-                elif vista_mes == "Año":
-                    proyectado_anual = df_filtered[
-                        (df_filtered['FECHA'].dt.year == ref_year) &
-                        (df_filtered['FECHA'].dt.month.isin(meses_quarter))
-                    ].groupby(['SUCURSAL', 'LINEA_PLUS'], dropna=False)['PRESUPUESTO'].sum().reset_index(name='proyectado')
-                    previo_anual = df_filtered[
-                        (df_filtered['FECHA'].dt.year == prev_year) &
-                        (df_filtered['FECHA'].dt.month.isin(meses_quarter))
-                    ].groupby(['SUCURSAL', 'LINEA_PLUS'], dropna=False)['IMP_PRIMA'].sum().reset_index(name='previo')
-                    brecha_df = proyectado_anual.merge(previo_anual, on=['SUCURSAL', 'LINEA_PLUS'], how='outer').fillna(0)
-                else:
-                    proyectado_ytd = df_filtered[
-                        (df_filtered['FECHA'].dt.year == ref_year) &
-                        (df_filtered['FECHA'].dt.month <= fecha_corte.month) &
-                        (df_filtered['FECHA'].dt.month.isin(meses_quarter))
-                    ].groupby(['SUCURSAL', 'LINEA_PLUS'], dropna=False)['PRESUPUESTO'].sum().reset_index(name='proyectado')
-                    previo_ytd = df_filtered[
-                        (df_filtered['FECHA'].dt.year == prev_year) &
-                        (df_filtered['FECHA'].dt.month <= fecha_corte.month) &
-                        (df_filtered['FECHA'].dt.month.isin(meses_quarter))
-                    ].groupby(['SUCURSAL', 'LINEA_PLUS'], dropna=False)['IMP_PRIMA'].sum().reset_index(name='previo')
-                    brecha_df = proyectado_ytd.merge(previo_ytd, on=['SUCURSAL', 'LINEA_PLUS'], how='outer').fillna(0)
-
-                if not brecha_df.empty:
-                    brecha_df['brecha'] = brecha_df['proyectado'] - brecha_df['previo']
-                    brecha_df = brecha_df[['SUCURSAL', 'LINEA_PLUS', 'brecha']]
-
-            if not brecha_df.empty:
-                pivot_brecha = brecha_df.pivot_table(
-                    index='SUCURSAL', columns='LINEA_PLUS', values='brecha', aggfunc='sum', fill_value=0
-                )
-                if not pivot_brecha.empty:
-                    pivot_brecha = pivot_brecha.loc[pivot_brecha.sum(axis=1).sort_values(ascending=False).index]
-
-                    z_abs_brecha = np.abs(pivot_brecha.values)
-                    text_brecha = [[fmt_cop(v) for v in row] for row in pivot_brecha.values]
-
-                    fig_brecha = go.Figure(data=go.Heatmap(
-                        z=z_abs_brecha,
-                        x=list(pivot_brecha.columns),
-                        y=list(pivot_brecha.index),
-                        text=text_brecha,
-                        texttemplate="%{text}",
-                        textfont={"size": 11, "color": "white"},
-                        colorscale=[
-                            [0.0, "#1a2a3a"],
-                            [0.3, "#7c3aed"],
-                            [1.0, "#f59e0b"],
-                        ],
-                        showscale=True,
-                        colorbar=dict(
-                            title="Brecha (abs)",
-                            tickformat="$,.0f",
-                            thickness=15,
-                            len=0.8,
-                        ),
-                        hovertemplate=(
-                            "<b>Sucursal:</b> %{y}<br>"
-                            "<b>Línea:</b> %{x}<br>"
-                            "<b>Brecha vs Previo:</b> %{text}<br>"
-                            "<extra></extra>"
-                        ),
-                    ))
-
-                    fig_brecha.update_layout(
-                        title=dict(
-                            text=f"📉 Brecha vs Previo — {vista_mes} | {periodo_actual.strftime('%m/%Y')} | Intensidad = Meta más alta que año anterior",
-                            font=dict(size=16, color=plotly_font_color),
-                            x=0.02,
-                        ),
-                        template=plotly_template,
-                        paper_bgcolor=plotly_bg,
-                        plot_bgcolor=plotly_bg,
-                        font=dict(color=plotly_font_color),
-                        height=max(350, len(pivot_brecha) * 50 + 120),
-                        margin=dict(l=10, r=10, t=60, b=10),
-                        xaxis=dict(side="top", tickfont=dict(size=12, color="#f59e0b"), title=""),
-                        yaxis=dict(tickfont=dict(size=11, color=plotly_font_color), title="", autorange="reversed"),
-                    )
-
-                    st.plotly_chart(fig_brecha, use_container_width=True)
-                    st.caption("🟡 Mayor intensidad = meta subió más respecto al año anterior (más difícil de alcanzar) | Azul oscuro = meta similar o menor al año previo")
-                else:
-                    st.info("📊 No hay datos suficientes para mostrar la matriz de Brecha vs Previo con los filtros actuales.")
-            elif 'SUCURSAL' in df_filtered.columns:
-                st.info("📊 No hay datos suficientes para mostrar la matriz de Brecha vs Previo con los filtros actuales.")
+                        st.plotly_chart(fig_heat, use_container_width=True)
+                        st.caption(
+                            "🔴 Mayor intensidad = mayor brecha entre Proyectado y Forecast | "
+                            "Los valores coinciden con la columna 'Déficit vs Meta' de la tabla, distribuidos por sucursal según peso presupuestal"
+                        )
 
         # Exportación unificada
         with BytesIO() as buf:
             with pd.ExcelWriter(buf, engine="openpyxl") as writer:
                 df_resumen.to_excel(writer, sheet_name="Resumen_Lineas", index=False)
                 if pivot_deficit.empty:
-                    pd.DataFrame([{
-                        "SUCURSAL": "",
-                        "Nota": "Sin datos para Deficit vs Meta con los filtros actuales"
-                    }]).to_excel(writer, sheet_name="Deficit_vs_Meta", index=False)
+                    pd.DataFrame([{"Nota": "Sin datos para Deficit vs Meta con los filtros actuales"}]).to_excel(
+                        writer, sheet_name="Deficit_vs_Meta", index=False
+                    )
                 else:
                     pivot_deficit.to_excel(writer, sheet_name="Deficit_vs_Meta")
-
-                if pivot_brecha.empty:
-                    pd.DataFrame([{
-                        "SUCURSAL": "",
-                        "Nota": "Sin datos para Brecha vs Previo con los filtros actuales"
-                    }]).to_excel(writer, sheet_name="Brecha_vs_Previo", index=False)
-                else:
-                    pivot_brecha.to_excel(writer, sheet_name="Brecha_vs_Previo")
             excel_bytes = buf.getvalue()
 
         vista_label = {"Mes": "mes", "Año": "anio", "Acumulado Mes": "acumulado"}.get(vista_mes, "general")
         st.download_button(
-            label="⬇️ Exportar resumen + mapas de calor a Excel",
+            label="⬇️ Exportar resumen + mapa de calor a Excel",
             data=excel_bytes,
             file_name=f"aseguraview_{vista_label}_{periodo_actual.strftime('%Y%m')}.xlsx",
             mime="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
