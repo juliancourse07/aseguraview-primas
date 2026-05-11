@@ -1021,7 +1021,7 @@ with tabs[1]:
 
                     fig_brecha.update_layout(
                         title=dict(
-                            text=f"📉 Brecha vs Previo — {periodo_actual.strftime('%m/%Y')} | Intensidad = Meta más alta que año anterior",
+                            text=f"📉 Brecha vs Previo — {vista_mes} | {periodo_actual.strftime('%m/%Y')} | Intensidad = Meta más alta que año anterior",
                             font=dict(size=16, color=plotly_font_color),
                             x=0.02,
                         ),
