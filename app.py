@@ -9,6 +9,7 @@ warnings.filterwarnings("ignore")
 import streamlit as st
 import pandas as pd
 import plotly.graph_objects as go
+import numpy as np
 from io import BytesIO
 
 # Configuración
@@ -18,7 +19,7 @@ from config import PAGE_TITLE, PAGE_ICON, LAYOUT
 from utils.data_loader import load_data, load_cutoff_date
 from utils.data_processor import normalize_dataframe
 from utils.formatters import fmt_cop, badge_pct_html, badge_growth_html
-from utils.date_utils import business_days_left, get_month_range
+from utils.date_utils import business_days_left
 
 # Models
 from modelos.forecast_engine import ForecastEngine
@@ -29,9 +30,6 @@ from modelos.budget_2026 import Budget2026Generator
 from componentes.sidebar import render_sidebar
 from componentes.tables import df_to_html
 from componentes.charts import render_forecast_chart
-
-# Chatbot IA
-from chatbot import render_chat_button, render_chat_panel, render_chat_toggle_button, build_context
 
 # ==================== CONSTANTS ====================
 # Indicadores visuales para el gráfico de ritmo comercial por sucursal
@@ -128,13 +126,6 @@ body,.stApp {background:var(--bg);color:var(--fg);}
 </style>
 """, unsafe_allow_html=True)
 
-# Inyectar CSS del botón flotante del chatbot
-render_chat_button()
-
-# Inicializar estado del chatbot temprano (antes de cualquier condicional)
-if "chat_open" not in st.session_state:
-    st.session_state.chat_open = False
-
 # ==================== LOAD DATA ====================
 @st.cache_data(ttl=1800, show_spinner=True)
 def load_and_process_data():
@@ -203,42 +194,6 @@ def compute_line_forecast(serie_data: tuple, conservative_factor: float,
         'is_partial': is_partial,
         'cur_month_str': str(cur_month) if cur_month is not None else None,
     }
-
-
-@st.cache_data(ttl=300)
-def compute_chat_forecast_cached(
-    serie_fechas: tuple,
-    serie_valores: tuple,
-    conservative_factor: float,
-    anio: int,
-    fecha_corte_str: str,
-    linea_plus: str,
-) -> float:
-    """Calcula forecast simplificado para el chatbot (cacheado 5 min).
-
-    Returns:
-        float: Forecast mensual ajustado por línea
-    """
-    serie = pd.Series(list(serie_valores), index=pd.to_datetime(list(serie_fechas)))
-    engine = ForecastEngine(conservative_factor=conservative_factor)
-    fecha_corte_ts = pd.Timestamp(fecha_corte_str)
-
-    serie_clean = engine.sanitize_series(serie, anio)
-    serie_train, _, _ = engine.split_series_exclude_partial(serie_clean, anio, fecha_corte_ts)
-
-    _, fc_df, _, _ = engine.fit_forecast(serie_train, steps=1)
-
-    if fc_df.empty:
-        return 0.0
-
-    forecast_val = float(fc_df['Forecast_mensual'].iloc[0])
-
-    if linea_plus == "FIANZAS":
-        forecast_val *= 0.95
-    elif linea_plus != "SOAT":
-        forecast_val *= 0.99
-
-    return forecast_val
 
 
 df, fecha_corte = load_and_process_data()
@@ -420,6 +375,8 @@ with tabs[1]:
             faltante_mes = presup_mes - prod_mes_actual
             pct_ejec_mes = (prod_mes_actual / presup_mes * 100) if presup_mes > 0 else 0.0
             forecast_ejec_pct = (forecast_mes / presup_mes * 100) if presup_mes > 0 else 0.0
+            deficit_vs_meta = presup_mes - forecast_mes
+            brecha_vs_previo = presup_mes - prod_mes_previo
             crec_fc_cop = forecast_mes - prod_mes_previo
             crec_fc_pct = ((forecast_mes / prod_mes_previo) - 1) * 100 if prod_mes_previo > 0 else 0.0
 
@@ -432,11 +389,13 @@ with tabs[1]:
                 'LINEA_PLUS': linea,
                 'Previo': prod_mes_previo,
                 'Actual': prod_mes_actual,
-                'Presupuesto': presup_mes,
+                'Proyectado': presup_mes,
                 'Faltante': faltante_mes,
                 '% Ejec.': pct_ejec_mes,
                 'Forecast (mes)': forecast_mes,
                 'Forecast ejecución': forecast_ejec_pct,
+                'Déficit vs Meta': deficit_vs_meta,
+                'Brecha vs Previo': brecha_vs_previo,
                 'Crec. Fc (COP)': crec_fc_cop,
                 'Crec. Fc (%)': crec_fc_pct,
                 'Req x día Fc': req_dia_fc,
@@ -531,6 +490,8 @@ with tabs[1]:
                 forecast_ejec_pct = 0.0
             else:
                 forecast_ejec_pct = (cierre_estimado / presup_anual) * 100
+            deficit_vs_meta = presup_anual - cierre_estimado
+            brecha_vs_previo = presup_anual - prod_anio_previo
             crec_fc_cop = cierre_estimado - prod_anio_previo
             crec_fc_pct = ((cierre_estimado / prod_anio_previo) - 1) * 100 if prod_anio_previo > 0 else 0.0
 
@@ -538,11 +499,13 @@ with tabs[1]:
                 'LINEA_PLUS': linea,
                 'Previo (año)': prod_anio_previo,
                 'Actual (YTD)': prod_ytd_actual,
-                'Presupuesto (anual)': presup_anual,
+                'Proyectado (anual)': presup_anual,
                 'Faltante': faltante_anual,
                 '% Ejec.': pct_ejec_anual,
                 'Forecast (cierre)': cierre_estimado,
                 'Forecast ejecución': forecast_ejec_pct,
+                'Déficit vs Meta': deficit_vs_meta,
+                'Brecha vs Previo': brecha_vs_previo,
                 'Crec. Fc (COP)': crec_fc_cop,
                 'Crec. Fc (%)': crec_fc_pct
             })
@@ -600,6 +563,8 @@ with tabs[1]:
             faltante_ytd = presup_ytd - ytd_con_forecast
             pct_ejec_ytd = (prod_ytd_actual / presup_ytd * 100) if presup_ytd > 0 else 0.0
             forecast_ejec_pct = (ytd_con_forecast / presup_ytd * 100) if presup_ytd > 0 else 0.0
+            deficit_vs_meta = presup_ytd - ytd_con_forecast
+            brecha_vs_previo = presup_ytd - prod_ytd_previo
             crec_fc_cop = ytd_con_forecast - prod_ytd_previo
             crec_fc_pct = ((ytd_con_forecast / prod_ytd_previo) - 1) * 100 if prod_ytd_previo > 0 else 0.0
             
@@ -607,11 +572,13 @@ with tabs[1]:
                 'LINEA_PLUS': linea,
                 'Previo (YTD)': prod_ytd_previo,
                 'Actual (YTD)': prod_ytd_actual,
-                'Presupuesto (YTD)': presup_ytd,
+                'Proyectado (YTD)': presup_ytd,
                 'Faltante': faltante_ytd,
                 '% Ejec.': pct_ejec_ytd,
                 'Forecast (YTD + mes)': ytd_con_forecast,
                 'Forecast ejecución': forecast_ejec_pct,
+                'Déficit vs Meta': deficit_vs_meta,
+                'Brecha vs Previo': brecha_vs_previo,
                 'Crec. Fc (COP)': crec_fc_cop,
                 'Crec. Fc (%)': crec_fc_pct
             })
@@ -632,23 +599,23 @@ with tabs[1]:
             elif '% Ejec' in col or 'Crec. Fc (%)' in col or 'ejecución' in col:
                 if vista_mes == "Mes":
                     if '% Ejec.' == col:
-                        totales[col] = (df_resumen['Actual'].sum() / df_resumen['Presupuesto'].sum() * 100) if df_resumen['Presupuesto'].sum() > 0 else 0.0
+                        totales[col] = (df_resumen['Actual'].sum() / df_resumen['Proyectado'].sum() * 100) if df_resumen['Proyectado'].sum() > 0 else 0.0
                     elif 'Forecast ejecución' == col:
-                        totales[col] = (df_resumen['Forecast (mes)'].sum() / df_resumen['Presupuesto'].sum() * 100) if df_resumen['Presupuesto'].sum() > 0 else 0.0
+                        totales[col] = (df_resumen['Forecast (mes)'].sum() / df_resumen['Proyectado'].sum() * 100) if df_resumen['Proyectado'].sum() > 0 else 0.0
                     elif 'Crec. Fc (%)' == col:
                         totales[col] = ((df_resumen['Forecast (mes)'].sum() / df_resumen['Previo'].sum()) - 1) * 100 if df_resumen['Previo'].sum() > 0 else 0.0
                 elif vista_mes == "Año":
                     if '% Ejec.' == col:
-                        totales[col] = (df_resumen['Actual (YTD)'].sum() / df_resumen['Presupuesto (anual)'].sum() * 100) if df_resumen['Presupuesto (anual)'].sum() > 0 else 0.0
+                        totales[col] = (df_resumen['Actual (YTD)'].sum() / df_resumen['Proyectado (anual)'].sum() * 100) if df_resumen['Proyectado (anual)'].sum() > 0 else 0.0
                     elif 'Forecast ejecución' == col:
-                        totales[col] = (df_resumen['Forecast (cierre)'].sum() / df_resumen['Presupuesto (anual)'].sum() * 100) if df_resumen['Presupuesto (anual)'].sum() > 0 else 0.0
+                        totales[col] = (df_resumen['Forecast (cierre)'].sum() / df_resumen['Proyectado (anual)'].sum() * 100) if df_resumen['Proyectado (anual)'].sum() > 0 else 0.0
                     elif 'Crec. Fc (%)' == col:
                         totales[col] = ((df_resumen['Forecast (cierre)'].sum() / df_resumen['Previo (año)'].sum()) - 1) * 100 if df_resumen['Previo (año)'].sum() > 0 else 0.0
                 else:
                     if '% Ejec.' == col:
-                        totales[col] = (df_resumen['Actual (YTD)'].sum() / df_resumen['Presupuesto (YTD)'].sum() * 100) if df_resumen['Presupuesto (YTD)'].sum() > 0 else 0.0
+                        totales[col] = (df_resumen['Actual (YTD)'].sum() / df_resumen['Proyectado (YTD)'].sum() * 100) if df_resumen['Proyectado (YTD)'].sum() > 0 else 0.0
                     elif 'Forecast ejecución' == col:
-                        totales[col] = (df_resumen['Forecast (YTD + mes)'].sum() / df_resumen['Presupuesto (YTD)'].sum() * 100) if df_resumen['Presupuesto (YTD)'].sum() > 0 else 0.0
+                        totales[col] = (df_resumen['Forecast (YTD + mes)'].sum() / df_resumen['Proyectado (YTD)'].sum() * 100) if df_resumen['Proyectado (YTD)'].sum() > 0 else 0.0
                     elif 'Crec. Fc (%)' == col:
                         totales[col] = ((df_resumen['Forecast (YTD + mes)'].sum() / df_resumen['Previo (YTD)'].sum()) - 1) * 100 if df_resumen['Previo (YTD)'].sum() > 0 else 0.0
             else:
@@ -709,12 +676,199 @@ with tabs[1]:
                             style += "color:#16a34a;" if faltante_val <= 0 else "color:#ef4444;"
                         except:
                             pass
+                    elif col in ['Déficit vs Meta', 'Brecha vs Previo']:
+                        try:
+                            brecha_val = df_resumen.iloc[idx][col]
+                            style += "color:#ef4444;font-weight:700;" if brecha_val > 0 else "color:#16a34a;font-weight:700;"
+                        except:
+                            pass
                 
                 html_table += f'<td style="{style}">{val}</td>'
             html_table += '</tr>'
         
         html_table += '</tbody></table></div>'
         st.markdown(html_table, unsafe_allow_html=True)
+
+        st.markdown("---")
+        st.markdown("### 🔥 Mapa de Calor — Déficit vs Meta por Sucursal y Línea")
+
+        deficit_df = pd.DataFrame(columns=['SUCURSAL', 'LINEA_PLUS', 'deficit'])
+        if 'SUCURSAL' not in df_filtered.columns:
+            st.info("📊 No se puede construir el mapa de calor porque no existe la columna SUCURSAL.")
+        elif 'PRESUPUESTO' not in df_filtered.columns:
+            st.info("📊 No se puede construir el mapa de calor porque no existe la columna PRESUPUESTO.")
+        else:
+            if vista_mes == "Mes":
+                df_heat = df_filtered[
+                    (df_filtered['FECHA'] == periodo_actual) &
+                    (df_filtered['FECHA'].dt.month.isin(meses_quarter))
+                ].copy()
+                if not df_heat.empty:
+                    deficit_df = df_heat.groupby(['SUCURSAL', 'LINEA_PLUS'], dropna=False).agg({
+                        'PRESUPUESTO': 'sum',
+                        'IMP_PRIMA': 'sum'
+                    }).reset_index()
+                    deficit_df['deficit'] = deficit_df['PRESUPUESTO'] - deficit_df['IMP_PRIMA']
+            elif vista_mes == "Año":
+                df_heat = df_filtered[
+                    (df_filtered['FECHA'].dt.year == ref_year) &
+                    (df_filtered['FECHA'].dt.month < fecha_corte.month) &
+                    (df_filtered['FECHA'].dt.month.isin(meses_quarter))
+                ].copy()
+                if not df_heat.empty:
+                    deficit_df = df_heat.groupby(['SUCURSAL', 'LINEA_PLUS'], dropna=False).agg({
+                        'PRESUPUESTO': 'sum',
+                        'IMP_PRIMA': 'sum'
+                    }).reset_index()
+                    deficit_df['deficit'] = deficit_df['PRESUPUESTO'] - deficit_df['IMP_PRIMA']
+            else:
+                df_heat = df_filtered[
+                    (df_filtered['FECHA'].dt.year == ref_year) &
+                    (df_filtered['FECHA'].dt.month <= fecha_corte.month) &
+                    (df_filtered['FECHA'].dt.month.isin(meses_quarter))
+                ].copy()
+                if not df_heat.empty:
+                    grouped_actual = df_heat.groupby(['SUCURSAL', 'LINEA_PLUS'], dropna=False).agg({
+                        'PRESUPUESTO': 'sum'
+                    }).reset_index()
+
+                    grouped_actual['IMP_CERRADOS'] = 0.0
+                    grouped_actual['FORECAST_MES_ACTUAL'] = 0.0
+
+                    for idx_heat, row_heat in grouped_actual.iterrows():
+                        sucursal_h = row_heat['SUCURSAL']
+                        linea_h = row_heat['LINEA_PLUS']
+                        df_grp = df_filtered[
+                            (df_filtered['SUCURSAL'] == sucursal_h) &
+                            (df_filtered['LINEA_PLUS'] == linea_h)
+                        ].copy()
+                        if df_grp.empty:
+                            continue
+
+                        imp_cerrados = df_grp[
+                            (df_grp['FECHA'].dt.year == ref_year) &
+                            (df_grp['FECHA'].dt.month < fecha_corte.month) &
+                            (df_grp['FECHA'].dt.month.isin(meses_quarter))
+                        ]['IMP_PRIMA'].sum()
+
+                        forecast_mes_actual = 0.0
+                        if fecha_corte.month in meses_quarter:
+                            prod_parcial_grp = df_grp[df_grp['FECHA'] == periodo_actual]['IMP_PRIMA'].sum()
+                            serie_grp = df_grp.groupby('FECHA')['IMP_PRIMA'].sum().sort_index()
+                            serie_data_grp = (
+                                tuple(str(d) for d in serie_grp.index),
+                                tuple(float(v) for v in serie_grp.values),
+                            )
+                            fc_grp_result = compute_line_forecast(
+                                serie_data_grp,
+                                filters['conservative_factor'],
+                                ref_year,
+                                str(fecha_corte.date()),
+                                steps=1
+                            )
+                            forecast_mes_actual = fc_grp_result['fc_valores'][0] if fc_grp_result['fc_valores'] else 0.0
+                            if linea_h == "FIANZAS":
+                                forecast_mes_actual = forecast_mes_actual * 0.95
+                            elif linea_h == "SOAT":
+                                pass
+                            else:
+                                forecast_mes_actual = forecast_mes_actual * 0.99
+                            if fc_grp_result.get('is_partial'):
+                                forecast_mes_actual = nowcast_cached(prod_parcial_grp, fecha_corte, forecast_mes_actual)
+
+                        grouped_actual.at[idx_heat, 'IMP_CERRADOS'] = imp_cerrados
+                        grouped_actual.at[idx_heat, 'FORECAST_MES_ACTUAL'] = forecast_mes_actual
+
+                    grouped_actual['deficit'] = grouped_actual['PRESUPUESTO'] - (
+                        grouped_actual['IMP_CERRADOS'] + grouped_actual['FORECAST_MES_ACTUAL']
+                    )
+                    deficit_df = grouped_actual[['SUCURSAL', 'LINEA_PLUS', 'deficit']]
+
+        pivot_deficit = pd.DataFrame()
+        if not deficit_df.empty:
+            pivot_deficit = deficit_df.pivot_table(
+                index='SUCURSAL', columns='LINEA_PLUS', values='deficit', aggfunc='sum', fill_value=0
+            )
+            if not pivot_deficit.empty:
+                pivot_deficit = pivot_deficit.loc[pivot_deficit.sum(axis=1).sort_values(ascending=False).index]
+                z_abs = np.abs(pivot_deficit.values)
+                text_matrix = [[fmt_cop(v) for v in row] for row in pivot_deficit.values]
+
+                fig_heat = go.Figure(data=go.Heatmap(
+                    z=z_abs,
+                    x=list(pivot_deficit.columns),
+                    y=list(pivot_deficit.index),
+                    text=text_matrix,
+                    texttemplate="%{text}",
+                    textfont={"size": 11, "color": "white"},
+                    colorscale=[
+                        [0.0, "#1a3a1a"],
+                        [0.3, "#7f1d1d"],
+                        [1.0, "#ef4444"],
+                    ],
+                    showscale=True,
+                    colorbar=dict(
+                        title="Déficit (abs)",
+                        tickformat="$,.0f",
+                        thickness=15,
+                        len=0.8,
+                    ),
+                    hovertemplate=(
+                        "<b>Sucursal:</b> %{y}<br>"
+                        "<b>Línea:</b> %{x}<br>"
+                        "<b>Déficit vs Meta:</b> %{text}<br>"
+                        "<extra></extra>"
+                    ),
+                ))
+
+                vista_title = vista_mes
+                fig_heat.update_layout(
+                    title=dict(
+                        text=f"🔥 Déficit vs Meta — {vista_title} | {periodo_actual.strftime('%m/%Y')} | Intensidad = Mayor brecha",
+                        font=dict(size=16, color="#f3f4f6"),
+                        x=0.02,
+                    ),
+                    template="plotly_dark",
+                    paper_bgcolor="#071428",
+                    plot_bgcolor="#071428",
+                    font=dict(color="#f3f4f6"),
+                    height=max(350, len(pivot_deficit) * 50 + 120),
+                    margin=dict(l=10, r=10, t=60, b=10),
+                    xaxis=dict(
+                        side="top",
+                        tickfont=dict(size=12, color="#38bdf8"),
+                        title="",
+                    ),
+                    yaxis=dict(
+                        tickfont=dict(size=11, color="#f3f4f6"),
+                        title="",
+                        autorange="reversed",
+                    ),
+                )
+
+                st.plotly_chart(fig_heat, use_container_width=True)
+                st.caption("🔴 Mayor intensidad = mayor brecha entre meta y forecast | Los valores negativos indican forecast que supera la meta")
+            else:
+                st.info("📊 No hay datos suficientes para mostrar el mapa de calor con los filtros actuales.")
+        else:
+            st.info("📊 No hay datos suficientes para mostrar el mapa de calor con los filtros actuales.")
+
+        with BytesIO() as buf:
+            with pd.ExcelWriter(buf, engine="openpyxl") as writer:
+                df_resumen_export = df_resumen.copy()
+                df_resumen_export.to_excel(writer, sheet_name="Resumen_Líneas", index=False)
+                pivot_deficit.to_excel(writer, sheet_name="Mapa_Calor_Déficit")
+            excel_bytes = buf.getvalue()
+
+        vista_slug = vista_mes.lower().replace(" ", "_")
+        periodo_slug = periodo_actual.strftime('%Y%m')
+        st.download_button(
+            label="⬇️ Exportar tabla + mapa de calor a Excel",
+            data=excel_bytes,
+            file_name=f"aseguraview_deficit_{vista_slug}_{periodo_slug}.xlsx",
+            mime="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
+            use_container_width=True,
+        )
     
     # Gráfico consolidado
     st.markdown("---")
@@ -1065,65 +1219,4 @@ with tabs[3]:
             else:
                 st.warning("No se pudo generar presupuesto con los filtros actuales")
 
-# ==================== CHATBOT IA (LAZY LOADED) ====================
-# El botón de toggle siempre se muestra (ligero, sin computación pesada)
-render_chat_toggle_button()
-
-# El contexto y panel del chat solo se calculan cuando el usuario lo abre
-if st.session_state.chat_open:
-    with st.spinner("🤖 Preparando asistente IA..."):
-        _periodo_actual_chat = pd.Timestamp(year=fecha_corte.year, month=fecha_corte.month, day=1)
-        _serie_chat = df_filtered.groupby('FECHA')['IMP_PRIMA'].sum().sort_index()
-
-        _prod_parcial_chat = float(
-            df_filtered[df_filtered['FECHA'] == _periodo_actual_chat]['IMP_PRIMA'].sum()
-        )
-
-        _presup_mensual_chat = float(
-            df_filtered[df_filtered['FECHA'] == _periodo_actual_chat]['PRESUPUESTO'].sum()
-            if 'PRESUPUESTO' in df_filtered.columns else 0.0
-        )
-
-        _acumulado_anio_chat = float(
-            df_filtered[
-                (df_filtered['FECHA'].dt.year == filters['anio_analisis']) &
-                (df_filtered['FECHA'].dt.month < fecha_corte.month)
-            ]['IMP_PRIMA'].sum()
-        )
-
-        _presup_anual_chat = float(
-            df_filtered[
-                df_filtered['FECHA'].dt.year == filters['anio_analisis']
-            ]['PRESUPUESTO'].sum()
-            if 'PRESUPUESTO' in df_filtered.columns else 0.0
-        )
-
-        _primer_dia_chat, _ultimo_dia_chat = get_month_range(fecha_corte.year, fecha_corte.month)
-        _dias_totales_chat = business_days_left(_primer_dia_chat, _ultimo_dia_chat)
-        _dias_restantes_chat = business_days_left(fecha_corte, _ultimo_dia_chat)
-        _dias_transcurridos_chat = max(0, _dias_totales_chat - _dias_restantes_chat)
-
-        _forecast_mensual_chat = compute_chat_forecast_cached(
-            serie_fechas=tuple(str(d) for d in _serie_chat.index),
-            serie_valores=tuple(float(v) for v in _serie_chat.values),
-            conservative_factor=filters['conservative_factor'],
-            anio=filters['anio_analisis'],
-            fecha_corte_str=str(fecha_corte.date()),
-            linea_plus=filters['linea_plus'],
-        )
-
-        _chat_system_prompt = build_context(
-            fecha_corte=fecha_corte,
-            filters=filters,
-            df_filtered=df_filtered,
-            forecast_mensual=_forecast_mensual_chat,
-            produccion_parcial=_prod_parcial_chat,
-            presupuesto_mensual=_presup_mensual_chat,
-            acumulado_anio=_acumulado_anio_chat,
-            presupuesto_anual=_presup_anual_chat,
-            dias_transcurridos=_dias_transcurridos_chat,
-            dias_totales=_dias_totales_chat,
-        )
-
-    render_chat_panel(_chat_system_prompt)
 
