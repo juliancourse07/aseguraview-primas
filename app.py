@@ -85,7 +85,7 @@ body,.stApp {background:var(--bg);color:var(--fg);}
 """, unsafe_allow_html=True)
 
 # ==================== LOAD DATA ====================
-@st.cache_data(ttl=1800, show_spinner=True)
+@st.cache_data(ttl=1800)
 def load_and_process_data():
     """Carga y procesa datos - Cache de 30 min para actualización frecuente del nowcast"""
     df_raw = load_data()
@@ -110,7 +110,7 @@ def nowcast_cached(prod_parcial: float, fecha_corte: pd.Timestamp,
     proporcion_restante = dias_restantes / dias_totales
     return prod_parcial + forecast_completo * proporcion_restante
 
-@st.cache_data(ttl=600)
+@st.cache_data(ttl=1800)
 def compute_line_forecast(serie_data: tuple, conservative_factor: float,
                           ref_year: int, fecha_corte_str: str,
                           steps: int = 1) -> dict:
@@ -152,6 +152,14 @@ def compute_line_forecast(serie_data: tuple, conservative_factor: float,
         'is_partial': is_partial,
         'cur_month_str': str(cur_month) if cur_month is not None else None,
     }
+
+
+def serialize_series_for_cache(serie: pd.Series) -> tuple:
+    """Convierte una serie temporal en un tuple hashable para cache."""
+    return (
+        tuple(str(d) for d in serie.index),
+        tuple(float(v) for v in serie.values),
+    )
 
 
 df, fecha_corte = load_and_process_data()
@@ -308,14 +316,15 @@ with tabs[1]:
             presup_mes = df_linea[df_linea['FECHA'] == periodo_actual]['PRESUPUESTO'].sum() if 'PRESUPUESTO' in df_linea.columns else 0.0
 
             serie_linea = df_linea.groupby('FECHA')['IMP_PRIMA'].sum().sort_index()
-            engine_temp = ForecastEngine(conservative_factor=filters['conservative_factor'])
-            serie_clean_temp = engine_temp.sanitize_series(serie_linea, fecha_corte.year)
-            serie_train_temp, _, is_partial_temp = engine_temp.split_series_exclude_partial(
-                serie_clean_temp, fecha_corte.year, fecha_corte
+            fc_result = compute_line_forecast(
+                serialize_series_for_cache(serie_linea),
+                filters['conservative_factor'],
+                fecha_corte.year,
+                str(fecha_corte.date()),
+                steps=1
             )
-
-            _, fc_temp, _, _ = engine_temp.fit_forecast(serie_train_temp, steps=1)
-            forecast_mes_full = float(fc_temp['Forecast_mensual'].iloc[0]) if not fc_temp.empty else 0.0
+            forecast_mes_full = fc_result['fc_valores'][0] if fc_result['fc_valores'] else 0.0
+            is_partial_temp = fc_result['is_partial']
 
             if linea == "FIANZAS":
                 forecast_mes_full = forecast_mes_full * 0.95
@@ -407,37 +416,44 @@ with tabs[1]:
                 )
             steps_temp = max(1, 12 - last_month_temp)
 
-            _, fc_temp, _, _ = engine_temp.fit_forecast(serie_train_temp, steps=steps_temp)
+            fc_result_anio = compute_line_forecast(
+                serialize_series_for_cache(serie_linea),
+                filters['conservative_factor'],
+                ref_year,
+                str(fecha_corte.date()),
+                steps=steps_temp
+            )
 
-            if linea == "FIANZAS" and not fc_temp.empty:
-                fc_temp = fc_temp.copy()
-                fc_temp['Forecast_mensual'] = fc_temp['Forecast_mensual'] * 0.95
-            elif linea == "SOAT" and not fc_temp.empty:
-                pass  # Sin ajuste
-            elif not fc_temp.empty:
-                fc_temp = fc_temp.copy()
-                fc_temp['Forecast_mensual'] = fc_temp['Forecast_mensual'] * 0.99
+            if fc_result_anio['fc_fechas']:
+                fc_fechas_ts = pd.to_datetime(fc_result_anio['fc_fechas'])
+                fc_valores_list = fc_result_anio['fc_valores']
 
-            # Nowcast para el mes actual parcial
-            if is_partial_temp and not fc_temp.empty and fecha_corte.month in meses_quarter:
-                forecast_mes_full = float(fc_temp['Forecast_mensual'].iloc[0])
-                nowcast_mes = nowcast_cached(prod_parcial_mes, fecha_corte, forecast_mes_full)
-                # Meses restantes (después del mes actual) también filtrados por Quarter
-                fc_restante = fc_temp.iloc[1:]
-                forecast_restante = float(
-                    fc_restante.loc[
-                        fc_restante['FECHA'].dt.month.isin(meses_quarter),
-                        'Forecast_mensual'
-                    ].sum()
-                ) if not fc_restante.empty else 0.0
+                if linea == "FIANZAS":
+                    fc_valores_list = [v * 0.95 for v in fc_valores_list]
+                elif linea == "SOAT":
+                    pass  # Sin ajuste
+                else:
+                    fc_valores_list = [v * 0.99 for v in fc_valores_list]
+
+                is_partial_temp = fc_result_anio['is_partial']
+
+                if is_partial_temp and fecha_corte.month in meses_quarter and fc_valores_list:
+                    forecast_mes_full_anio = fc_valores_list[0]
+                    nowcast_mes = nowcast_cached(prod_parcial_mes, fecha_corte, forecast_mes_full_anio)
+                    forecast_restante = sum(
+                        v for d, v in zip(fc_fechas_ts[1:], fc_valores_list[1:])
+                        if d.month in meses_quarter
+                    )
+                else:
+                    nowcast_mes = prod_parcial_mes
+                    forecast_restante = sum(
+                        v for d, v in zip(fc_fechas_ts, fc_valores_list)
+                        if d.month in meses_quarter
+                    )
             else:
                 nowcast_mes = prod_parcial_mes
-                forecast_restante = float(
-                    fc_temp.loc[
-                        fc_temp['FECHA'].dt.month.isin(meses_quarter),
-                        'Forecast_mensual'
-                    ].sum()
-                ) if not fc_temp.empty else 0.0
+                forecast_restante = 0.0
+                is_partial_temp = False
 
             cierre_estimado = prod_ytd_actual + nowcast_mes + forecast_restante
             faltante_anual = presup_anual - prod_ytd_actual
@@ -489,13 +505,15 @@ with tabs[1]:
             ]['PRESUPUESTO'].sum() if 'PRESUPUESTO' in df_linea.columns else 0.0
             
             serie_linea = df_linea.groupby('FECHA')['IMP_PRIMA'].sum().sort_index()
-            engine_temp = ForecastEngine(conservative_factor=filters['conservative_factor'])
-            serie_clean_temp = engine_temp.sanitize_series(serie_linea, ref_year)
-            serie_train_temp, _, is_partial_temp = engine_temp.split_series_exclude_partial(
-                serie_clean_temp, ref_year, fecha_corte
+            fc_result_acum = compute_line_forecast(
+                serialize_series_for_cache(serie_linea),
+                filters['conservative_factor'],
+                ref_year,
+                str(fecha_corte.date()),
+                steps=1
             )
-            _, fc_temp, _, _ = engine_temp.fit_forecast(serie_train_temp, steps=1)
-            forecast_mes_full = float(fc_temp['Forecast_mensual'].iloc[0]) if not fc_temp.empty else 0.0
+            forecast_mes_full = fc_result_acum['fc_valores'][0] if fc_result_acum['fc_valores'] else 0.0
+            is_partial_temp = fc_result_acum['is_partial']
 
             if linea == "FIANZAS":
                 forecast_mes_full = forecast_mes_full * 0.95
@@ -727,12 +745,11 @@ with tabs[1]:
                         text_matrix = [[fmt_cop(v) for v in row] for row in pivot_deficit.values]
 
                         colorscale = [
-                            [0.0,  "#FFF8F0"],   # blanco crema (cero y superávit)
-                            [0.15, "#FDDBC7"],   # rosa muy pálido
-                            [0.35, "#F4977A"],   # salmón
-                            [0.6,  "#E03C2B"],   # rojo escarlata medio
-                            [0.8,  "#C0392B"],   # rojo escarlata intenso
-                            [1.0,  "#7B0000"],   # rojo escarlata muy oscuro (máximo déficit)
+                            [0.0,   "#FFF8F0"],   # blanco crema (cero exacto y superávit)
+                            [0.01,  "#E53E2F"],   # rojo fuerte inmediato desde cualquier déficit
+                            [0.25,  "#C0392B"],   # rojo escarlata medio
+                            [0.6,   "#922B21"],   # rojo oscuro
+                            [1.0,   "#5C0A04"],   # rojo escarlata muy oscuro (máximo déficit)
                         ]
 
                         fig_heat = go.Figure(data=go.Heatmap(
