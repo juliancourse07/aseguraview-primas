@@ -716,34 +716,35 @@ with tabs[1]:
                             pivot_deficit.sum(axis=1).sort_values(ascending=False).index
                         ]
 
-                        # Valores reales (con signo) para el colorscale divergente
+                        # Valores reales (con signo) para mostrar en texto
                         z_vals = pivot_deficit.values.astype(float)
 
-                        # Escala simétrica alrededor de 0
-                        max_abs = np.abs(z_vals).max()
-                        if max_abs == 0:
-                            max_abs = 1.0
+                        # Para el color: clampear en 0 (todo lo negativo = blanco crema, todo lo positivo = escala roja)
+                        z_color = np.clip(z_vals, 0, None)
+                        max_deficit = z_color.max()
+                        if max_deficit == 0:
+                            max_deficit = 1.0
                         text_matrix = [[fmt_cop(v) for v in row] for row in pivot_deficit.values]
 
+                        colorscale = [
+                            [0.0,  "#FFF8F0"],   # blanco crema (cero y superávit)
+                            [0.15, "#FDDBC7"],   # rosa muy pálido
+                            [0.35, "#F4977A"],   # salmón
+                            [0.6,  "#E03C2B"],   # rojo escarlata medio
+                            [0.8,  "#C0392B"],   # rojo escarlata intenso
+                            [1.0,  "#7B0000"],   # rojo escarlata muy oscuro (máximo déficit)
+                        ]
+
                         fig_heat = go.Figure(data=go.Heatmap(
-                            z=z_vals,
+                            z=z_color,
                             x=list(pivot_deficit.columns),
                             y=list(pivot_deficit.index),
                             text=text_matrix,
                             texttemplate="%{text}",
-                            textfont={"size": 11, "color": "white"},
-                            colorscale=[
-                                [0.0,   "#16a34a"],
-                                [0.35,  "#4ade80"],
-                                [0.48,  "#052e16"],
-                                [0.5,   "#1a1a1a"],
-                                [0.52,  "#3b0000"],
-                                [0.65,  "#ef4444"],
-                                [1.0,   "#7f0000"],
-                            ],
-                            zmid=0,
-                            zmin=-max_abs,
-                            zmax=max_abs,
+                            textfont={"size": 11, "color": "#1a1a1a"},
+                            colorscale=colorscale,
+                            zmin=0,
+                            zmax=max_deficit,
                             showscale=True,
                             colorbar=dict(
                                 title="Déficit",
@@ -761,7 +762,7 @@ with tabs[1]:
 
                         fig_heat.update_layout(
                             title=dict(
-                                text=f"🔥 Déficit vs Meta — {vista_mes} | {periodo_actual.strftime('%m/%Y')} | 🔴 Rojo = Falta | 🟢 Verde = Supera meta",
+                                text=f"🔥 Déficit vs Meta — {vista_mes} | {periodo_actual.strftime('%m/%Y')} | 🔴 Rojo = Mayor déficit | ⬜ Blanco crema = Cero o superávit",
                                 font=dict(size=15, color="#f3f4f6"),
                                 x=0.02,
                             ),
@@ -784,10 +785,7 @@ with tabs[1]:
                         )
 
                         st.plotly_chart(fig_heat, use_container_width=True)
-                        st.caption(
-                            "🔴 Rojo más intenso = mayor brecha (más falta para llegar a la meta) | "
-                            "🟢 Verde = Forecast supera el presupuesto | Las sucursales con déficit cero en todas las líneas no aparecen"
-                        )
+                        st.caption("🔴 Rojo escarlata = mayor déficit (más falta para llegar a la meta) | ⬜ Blanco crema = cero o forecast supera la meta | Las sucursales con déficit cero en todas las líneas no aparecen")
 
         # Exportación unificada
         with BytesIO() as buf:
