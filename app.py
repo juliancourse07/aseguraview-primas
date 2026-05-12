@@ -651,8 +651,8 @@ with tabs[1]:
         pivot_deficit = pd.DataFrame()
 
         with st.expander("🔥 Mapa de Calor 1 — Déficit vs Meta por Sucursal y Línea", expanded=False):
-            if 'SUCURSAL' not in df_filtered.columns:
-                st.info("No hay columna SUCURSAL disponible para mostrar la matriz")
+            if 'Suc_agrupada' not in df_filtered.columns:
+                st.info("No hay columna Suc_agrupada disponible para mostrar la matriz")
             elif 'PRESUPUESTO' not in df_filtered.columns:
                 st.info("📊 No se puede construir el mapa de calor porque no existe la columna PRESUPUESTO.")
             else:
@@ -665,18 +665,18 @@ with tabs[1]:
                     df_pres_suc = df_filtered[
                         (df_filtered['FECHA'] == periodo_actual) &
                         (df_filtered['FECHA'].dt.month.isin(meses_quarter))
-                    ].groupby(['SUCURSAL', 'LINEA_PLUS'], dropna=False)['PRESUPUESTO'].sum().reset_index()
+                    ].groupby(['Suc_agrupada', 'LINEA_PLUS'], dropna=False)['PRESUPUESTO'].sum().reset_index()
                 elif vista_mes == "Año":
                     df_pres_suc = df_filtered[
                         (df_filtered['FECHA'].dt.year == ref_year) &
                         (df_filtered['FECHA'].dt.month.isin(meses_quarter))
-                    ].groupby(['SUCURSAL', 'LINEA_PLUS'], dropna=False)['PRESUPUESTO'].sum().reset_index()
+                    ].groupby(['Suc_agrupada', 'LINEA_PLUS'], dropna=False)['PRESUPUESTO'].sum().reset_index()
                 else:  # Acumulado Mes
                     df_pres_suc = df_filtered[
                         (df_filtered['FECHA'].dt.year == ref_year) &
                         (df_filtered['FECHA'].dt.month <= fecha_corte.month) &
                         (df_filtered['FECHA'].dt.month.isin(meses_quarter))
-                    ].groupby(['SUCURSAL', 'LINEA_PLUS'], dropna=False)['PRESUPUESTO'].sum().reset_index()
+                    ].groupby(['Suc_agrupada', 'LINEA_PLUS'], dropna=False)['PRESUPUESTO'].sum().reset_index()
 
                 if df_pres_suc.empty:
                     st.info("📊 No hay datos de presupuesto por sucursal para construir el mapa de calor.")
@@ -695,35 +695,58 @@ with tabs[1]:
                     df_pres_suc['deficit'] = df_pres_suc.apply(calcular_deficit_suc, axis=1)
 
                     pivot_deficit = df_pres_suc.pivot_table(
-                        index='SUCURSAL', columns='LINEA_PLUS', values='deficit', aggfunc='sum', fill_value=0
+                        index='Suc_agrupada', columns='LINEA_PLUS', values='deficit', aggfunc='sum', fill_value=0
                     )
 
+                    had_data_before_filter = not pivot_deficit.empty
                     if pivot_deficit.empty:
                         st.info("📊 No hay datos suficientes para mostrar el mapa de calor con los filtros actuales.")
                     else:
+                        # Excluir sucursales con déficit 0 en TODAS las líneas
+                        pivot_deficit = pivot_deficit[pivot_deficit.sum(axis=1) != 0]
+                        # También excluir si todos son exactamente 0
+                        mask_all_zero = (pivot_deficit == 0).all(axis=1)
+                        pivot_deficit = pivot_deficit[~mask_all_zero]
+
+                    if had_data_before_filter and pivot_deficit.empty:
+                        st.info("📊 Todas las sucursales tienen déficit cero para los filtros actuales.")
+                    elif not pivot_deficit.empty:
                         # Ordenar filas: mayor déficit total arriba
                         pivot_deficit = pivot_deficit.loc[
                             pivot_deficit.sum(axis=1).sort_values(ascending=False).index
                         ]
 
-                        z_abs = np.abs(pivot_deficit.values)
+                        # Valores reales (con signo) para el colorscale divergente
+                        z_vals = pivot_deficit.values.astype(float)
+
+                        # Escala simétrica alrededor de 0
+                        max_abs = np.abs(z_vals).max()
+                        if max_abs == 0:
+                            max_abs = 1.0
                         text_matrix = [[fmt_cop(v) for v in row] for row in pivot_deficit.values]
 
                         fig_heat = go.Figure(data=go.Heatmap(
-                            z=z_abs,
+                            z=z_vals,
                             x=list(pivot_deficit.columns),
                             y=list(pivot_deficit.index),
                             text=text_matrix,
                             texttemplate="%{text}",
                             textfont={"size": 11, "color": "white"},
                             colorscale=[
-                                [0.0, "#1a3a1a"],
-                                [0.3, "#7f1d1d"],
-                                [1.0, "#ef4444"],
+                                [0.0,   "#16a34a"],
+                                [0.35,  "#4ade80"],
+                                [0.48,  "#052e16"],
+                                [0.5,   "#1a1a1a"],
+                                [0.52,  "#3b0000"],
+                                [0.65,  "#ef4444"],
+                                [1.0,   "#7f0000"],
                             ],
+                            zmid=0,
+                            zmin=-max_abs,
+                            zmax=max_abs,
                             showscale=True,
                             colorbar=dict(
-                                title="Déficit (abs)",
+                                title="Déficit",
                                 tickformat="$,.0f",
                                 thickness=15,
                                 len=0.8,
@@ -738,7 +761,7 @@ with tabs[1]:
 
                         fig_heat.update_layout(
                             title=dict(
-                                text=f"🔥 Déficit vs Meta — {vista_mes} | {periodo_actual.strftime('%m/%Y')} | Proyectado − Forecast por Sucursal y Línea",
+                                text=f"🔥 Déficit vs Meta — {vista_mes} | {periodo_actual.strftime('%m/%Y')} | 🔴 Rojo = Falta | 🟢 Verde = Supera meta",
                                 font=dict(size=15, color="#f3f4f6"),
                                 x=0.02,
                             ),
@@ -762,8 +785,8 @@ with tabs[1]:
 
                         st.plotly_chart(fig_heat, use_container_width=True)
                         st.caption(
-                            "🔴 Mayor intensidad = mayor brecha entre Proyectado y Forecast | "
-                            "Los valores coinciden con la columna 'Déficit vs Meta' de la tabla, distribuidos por sucursal según peso presupuestal"
+                            "🔴 Rojo más intenso = mayor brecha (más falta para llegar a la meta) | "
+                            "🟢 Verde = Forecast supera el presupuesto | Las sucursales con déficit cero en todas las líneas no aparecen"
                         )
 
         # Exportación unificada
