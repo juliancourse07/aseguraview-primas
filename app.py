@@ -362,7 +362,8 @@ with tabs[1]:
             crec_fc_pct = ((forecast_mes / prod_mes_previo) - 1) * 100 if prod_mes_previo > 0 else 0.0
 
             ultimo_dia_mes = periodo_actual + pd.offsets.MonthEnd(0)
-            dias_restantes = max((ultimo_dia_mes.normalize() - pd.Timestamp(fecha_corte).normalize()).days + 1, 0)
+            fecha_corte_dia = pd.Timestamp(fecha_corte).normalize()
+            dias_restantes = max((ultimo_dia_mes.normalize() - fecha_corte_dia).days + 1, 0)
             req_dia_fc = (forecast_mes - prod_mes_actual) / dias_restantes if dias_restantes > 0 else 0.0
             req_dia_pres = (presup_mes - prod_mes_actual) / dias_restantes if dias_restantes > 0 else 0.0
 
@@ -811,7 +812,7 @@ with tabs[1]:
                         )
 
                         st.plotly_chart(fig_heat, use_container_width=True)
-                        st.caption("🔴 Rojo escarlata = mayor déficit (más falta para llegar a la meta) | ⬜ Blanco crema = cero o forecast supera la meta | Incluye fila TOTAL LÍNEA arriba de cada columna")
+                        st.caption("🔴 Rojo escarlata = mayor déficit (más falta para llegar a la meta) | ⬜ Blanco crema = cero o forecast supera la meta | Incluye fila TOTAL LÍNEA en la parte superior del mapa")
 
         # Exportación unificada
         with BytesIO() as buf:
