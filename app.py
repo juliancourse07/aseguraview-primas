@@ -6,6 +6,7 @@ Aplicación Streamlit refactorizada y modular
 import warnings
 warnings.filterwarnings("ignore")
 
+import html
 import streamlit as st
 import pandas as pd
 import plotly.graph_objects as go
@@ -50,6 +51,105 @@ def _hex_to_rgba(hex_color: str, alpha: float = 0.1) -> str:
     return f'rgba({r},{g},{b},{alpha})'
 
 
+def _blend_hex(start_hex: str, end_hex: str, ratio: float) -> str:
+    """Interpola dos colores hexadecimales para construir gradientes suaves."""
+    ratio = min(max(ratio, 0.0), 1.0)
+    start = tuple(int(start_hex[i:i + 2], 16) for i in (1, 3, 5))
+    end = tuple(int(end_hex[i:i + 2], 16) for i in (1, 3, 5))
+    mixed = tuple(int(start[idx] + (end[idx] - start[idx]) * ratio) for idx in range(3))
+    return f"#{mixed[0]:02x}{mixed[1]:02x}{mixed[2]:02x}"
+
+
+def _heatmap_cell_tokens(value: float, max_positive: float, is_total: bool = False) -> tuple[str, str, str]:
+    """Devuelve fondo, color de texto y borde para cada celda del mapa."""
+    value = float(value)
+    if value > 0:
+        ratio = min(value / max_positive, 1.0) if max_positive > 0 else 0.0
+        accent = _blend_hex("#f87171" if is_total else "#e53e2f", "#5c0a04", 0.2 + ratio * 0.8)
+        background = (
+            f"linear-gradient(135deg, {_hex_to_rgba(accent, 0.94)}, "
+            f"{_hex_to_rgba('#7f1d1d', 0.98)})"
+        )
+        text_color = "#fff7ed"
+        border_color = "rgba(255,255,255,0.12)"
+    else:
+        base = "#fff1e4" if is_total else "#fff8f0"
+        background = (
+            f"linear-gradient(135deg, {_hex_to_rgba(base, 0.98)}, "
+            f"{_hex_to_rgba('#fde7d3', 0.94)})"
+        )
+        text_color = "#1f2937"
+        border_color = "rgba(15,23,42,0.08)"
+    return background, text_color, border_color
+
+
+def _build_deficit_heatmap_html(
+    pivot_deficit_detalle: pd.DataFrame,
+    totales_linea: pd.Series,
+    vista_mes: str,
+    periodo_actual: pd.Timestamp,
+) -> str:
+    """Construye un mapa de calor HTML para ubicar los totales arriba de cada línea."""
+    columnas = list(pivot_deficit_detalle.columns)
+    total_values = pd.to_numeric(totales_linea, errors='coerce').fillna(0.0) if not totales_linea.empty else pd.Series(dtype=float)
+    detail_values = pd.to_numeric(pivot_deficit_detalle.to_numpy().ravel(), errors='coerce') if not pivot_deficit_detalle.empty else np.array([0.0])
+    positivos = [float(v) for v in list(detail_values) + total_values.tolist() if float(v) > 0]
+    max_positive = max(positivos, default=1.0)
+    grid_style = f"grid-template-columns:minmax(190px,1.35fr) repeat({len(columnas)}, minmax(120px,1fr));"
+
+    html_parts = [
+        '<div class="heatmap-shell">',
+        (
+            '<div class="heatmap-banner">'
+            f'<div class="heatmap-title">🔥 Déficit vs Meta — {html.escape(vista_mes)} | {periodo_actual.strftime("%m/%Y")}</div>'
+            '<div class="heatmap-legend">🔴 Rojo intenso = mayor faltante | ⬜ Crema = cero o superávit</div>'
+            '</div>'
+        ),
+        f'<div class="heatmap-grid" style="{grid_style}">',
+        '<div class="heatmap-total-label">Totales por línea</div>',
+    ]
+
+    for linea in columnas:
+        value = float(total_values.get(linea, 0.0))
+        background, text_color, border_color = _heatmap_cell_tokens(value, max_positive, is_total=True)
+        positive_class = " heatmap-total-positive" if value > 0 else ""
+        html_parts.append(
+            (
+                f'<div class="heatmap-total-cell{positive_class}" '
+                f'style="background:{background};color:{text_color};border-color:{border_color};">'
+                f'<div class="heatmap-total-caption">{html.escape(str(linea))}</div>'
+                f'<div class="heatmap-total-value">{html.escape(fmt_cop(value))}</div>'
+                '</div>'
+            )
+        )
+
+    html_parts.append('<div class="heatmap-corner-label">Sucursal</div>')
+    for linea in columnas:
+        html_parts.append(f'<div class="heatmap-col-head">{html.escape(str(linea))}</div>')
+
+    for sucursal, row in pivot_deficit_detalle.iterrows():
+        html_parts.append(f'<div class="heatmap-row-label">{html.escape(str(sucursal))}</div>')
+        for linea in columnas:
+            value = float(row[linea])
+            background, text_color, border_color = _heatmap_cell_tokens(value, max_positive)
+            positive_class = " heatmap-cell-positive" if value > 0 else ""
+            html_parts.append(
+                (
+                    f'<div class="heatmap-cell{positive_class}" '
+                    f'style="background:{background};color:{text_color};border-color:{border_color};">'
+                    f'{html.escape(fmt_cop(value))}'
+                    '</div>'
+                )
+            )
+
+    html_parts.extend([
+        '</div>',
+        '<div class="heatmap-note">⚠️ Los valores positivos laten suavemente porque indican alerta de superávit frente al forecast.</div>',
+        '</div>',
+    ])
+    return ''.join(html_parts)
+
+
 # ====================  PAGE CONFIG ====================
 st.set_page_config(
     page_title=PAGE_TITLE,
@@ -81,6 +181,29 @@ body,.stApp {background:var(--bg);color:var(--fg);}
 .near{color:var(--near);font-weight:700;}
 .muted{color:var(--muted);}
 .small{font-size:12px;color:var(--muted);}
+.heatmap-shell{border:1px solid rgba(56,189,248,0.18);border-radius:18px;overflow:hidden;background:linear-gradient(180deg,rgba(7,20,40,0.98),rgba(3,27,52,0.96));box-shadow:inset 0 1px 0 rgba(255,255,255,0.05);}
+.heatmap-banner{display:flex;justify-content:space-between;align-items:center;gap:12px;padding:14px 18px;background:linear-gradient(90deg,rgba(2,132,199,0.22),rgba(7,20,40,0.92) 65%,rgba(245,158,11,0.12));border-bottom:1px solid rgba(255,255,255,0.07);}
+.heatmap-title{font-size:15px;font-weight:700;color:#f3f4f6;}
+.heatmap-legend{font-size:12px;color:#dbeafe;text-align:right;}
+.heatmap-grid{display:grid;align-items:stretch;}
+.heatmap-total-label,.heatmap-total-cell,.heatmap-corner-label,.heatmap-col-head,.heatmap-row-label,.heatmap-cell{position:relative;display:flex;align-items:center;justify-content:center;min-height:64px;padding:10px 12px;text-align:center;border-right:1px solid rgba(255,255,255,0.05);border-bottom:1px solid rgba(255,255,255,0.05);}
+.heatmap-total-label,.heatmap-corner-label,.heatmap-row-label{justify-content:flex-start;}
+.heatmap-total-label{font-weight:800;color:#f8fafc;background:linear-gradient(135deg,rgba(56,189,248,0.20),rgba(14,116,144,0.08));}
+.heatmap-total-cell{flex-direction:column;gap:4px;}
+.heatmap-total-caption{font-size:11px;letter-spacing:0.08em;text-transform:uppercase;opacity:0.8;}
+.heatmap-total-value{font-size:17px;font-weight:800;line-height:1.1;}
+.heatmap-corner-label{font-size:12px;font-weight:700;letter-spacing:0.08em;text-transform:uppercase;color:#cbd5e1;background:rgba(255,255,255,0.03);}
+.heatmap-col-head{min-height:56px;background:rgba(56,189,248,0.13);color:#38bdf8;font-size:12px;font-weight:700;letter-spacing:0.08em;text-transform:uppercase;}
+.heatmap-row-label{font-size:13px;font-weight:600;color:#f8fafc;background:rgba(255,255,255,0.03);}
+.heatmap-cell{font-size:13px;font-weight:700;}
+.heatmap-cell-positive,.heatmap-total-positive{z-index:0;}
+.heatmap-cell-positive::after,.heatmap-total-positive::after{content:"";position:absolute;inset:8px;border-radius:12px;border:1px solid rgba(255,255,255,0.20);animation:heatPulse 1.15s ease-in-out infinite;pointer-events:none;}
+.heatmap-note{padding:12px 16px;font-size:12px;color:#cbd5e1;background:rgba(255,255,255,0.02);}
+@keyframes heatPulse{
+    0%,100%{transform:scale(1);opacity:0.30;box-shadow:0 0 0 0 rgba(239,68,68,0);}
+    45%{transform:scale(1.035);opacity:0.80;box-shadow:0 0 0 8px rgba(239,68,68,0.10);}
+    75%{transform:scale(1.01);opacity:0.45;box-shadow:0 0 0 3px rgba(239,68,68,0.16);}
+}
 </style>
 """, unsafe_allow_html=True)
 
@@ -741,78 +864,17 @@ with tabs[1]:
                         ]
                         totales_linea = pivot_deficit_detalle.sum(axis=0)
                         pivot_deficit = pd.concat(
-                            [pivot_deficit_detalle, pd.DataFrame([totales_linea], index=['TOTAL LÍNEA'])]
+                            [pd.DataFrame([totales_linea], index=['TOTAL LÍNEA']), pivot_deficit_detalle]
                         )
 
-                        # Valores reales (con signo) para mostrar en texto
-                        z_vals = pivot_deficit.values.astype(float)
-
-                        # Para el color: clampear en 0 (todo lo negativo = blanco crema, todo lo positivo = escala roja)
-                        z_color = np.clip(z_vals, 0, None)
-                        max_deficit = z_color.max()
-                        if max_deficit == 0:
-                            max_deficit = 1.0
-                        text_matrix = [[fmt_cop(v) for v in row] for row in pivot_deficit.values]
-
-                        colorscale = [
-                            [0.0,   "#FFF8F0"],   # blanco crema (cero exacto y superávit)
-                            [0.01,  "#E53E2F"],   # rojo fuerte inmediato desde cualquier déficit
-                            [0.25,  "#C0392B"],   # rojo escarlata medio
-                            [0.6,   "#922B21"],   # rojo oscuro
-                            [1.0,   "#5C0A04"],   # rojo escarlata muy oscuro (máximo déficit)
-                        ]
-
-                        fig_heat = go.Figure(data=go.Heatmap(
-                            z=z_color,
-                            x=list(pivot_deficit.columns),
-                            y=list(pivot_deficit.index),
-                            text=text_matrix,
-                            texttemplate="%{text}",
-                            textfont={"size": 11, "color": "#1a1a1a"},
-                            colorscale=colorscale,
-                            zmin=0,
-                            zmax=max_deficit,
-                            showscale=True,
-                            colorbar=dict(
-                                title="Déficit",
-                                tickformat="$,.0f",
-                                thickness=15,
-                                len=0.8,
-                            ),
-                            hovertemplate=(
-                                "<b>Sucursal:</b> %{y}<br>"
-                                "<b>Línea:</b> %{x}<br>"
-                                "<b>Proyectado(-)Forecast:</b> %{text}<br>"
-                                "<extra></extra>"
-                            ),
-                        ))
-
-                        fig_heat.update_layout(
-                            title=dict(
-                                text=f"🔥 Déficit vs Meta — {vista_mes} | {periodo_actual.strftime('%m/%Y')} | 🔴 Rojo = Mayor déficit | ⬜ Blanco crema = Cero o superávit",
-                                font=dict(size=15, color="#f3f4f6"),
-                                x=0.02,
-                            ),
-                            template="plotly_dark",
-                            paper_bgcolor="#071428",
-                            plot_bgcolor="#071428",
-                            font=dict(color="#f3f4f6"),
-                            height=max(350, len(pivot_deficit) * 50 + 120),
-                            margin=dict(l=10, r=10, t=70, b=10),
-                            xaxis=dict(
-                                side="top",
-                                tickfont=dict(size=12, color="#38bdf8"),
-                                title="",
-                            ),
-                            yaxis=dict(
-                                tickfont=dict(size=11, color="#f3f4f6"),
-                                title="",
-                                autorange="reversed",
-                            ),
+                        heatmap_html = _build_deficit_heatmap_html(
+                            pivot_deficit_detalle=pivot_deficit_detalle,
+                            totales_linea=totales_linea,
+                            vista_mes=vista_mes,
+                            periodo_actual=periodo_actual,
                         )
-
-                        st.plotly_chart(fig_heat, use_container_width=True)
-                        st.caption("🔴 Rojo escarlata = mayor déficit (más falta para llegar a la meta) | ⬜ Blanco crema = cero o forecast supera la meta | Incluye fila TOTAL LÍNEA en la parte superior del mapa")
+                        st.markdown(heatmap_html, unsafe_allow_html=True)
+                        st.caption("🔴 Rojo escarlata = mayor faltante frente al forecast | ⬜ Blanco crema = cero o superávit | Los totales por línea se muestran antes del detalle por sucursal")
 
         # Exportación unificada
         with BytesIO() as buf:
