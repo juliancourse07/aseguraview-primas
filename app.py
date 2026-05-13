@@ -121,7 +121,7 @@ def _build_deficit_heatmap_html(
         (
             '<div class="heatmap-banner">'
             f'<div class="heatmap-title">🔥 Déficit vs Meta — {html.escape(vista_mes)} | {html.escape(periodo_actual.strftime("%m/%Y"))} (Proyectado(-)Forecast)</div>'
-            '<div class="heatmap-legend">🔴 Rojo intenso = valores positivos (superávit vs forecast) | ⬜ Crema = cero o faltante</div>'
+            '<div class="heatmap-legend">🔴 Rojo intenso = valores positivos (Deficit vs forecast) | ⬜ Crema = cero o faltante</div>'
             '</div>'
         ),
         f'<div class="heatmap-grid" style="{grid_style}">',
@@ -163,7 +163,7 @@ def _build_deficit_heatmap_html(
 
     html_parts.extend([
         '</div>',
-        '<div class="heatmap-note">⚠️ La métrica es Proyectado(-)Forecast: los valores positivos tienen una animación suave como señal visual de seguimiento para superávit frente al forecast.</div>',
+        '<div class="heatmap-note">⚠️ La métrica es Proyectado(-)Forecast: los valores positivos tienen una animación suave como señal de alerta visual frente al riesgo de deficit frente al forecast.</div>',
         '</div>',
     ])
     return ''.join(html_parts)
