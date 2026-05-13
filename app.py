@@ -8,10 +8,15 @@ warnings.filterwarnings("ignore")
 
 import streamlit as st
 import pandas as pd
-import plotly.graph_objects as go
 import numpy as np
 import html
 from io import BytesIO
+
+try:
+    import plotly.graph_objects as go
+except ModuleNotFoundError:
+    st.error("❌ Dependencia faltante: `plotly`. Ejecuta `pip install -r requirements.txt` y reinicia la app.")
+    st.stop()
 
 # Configuración
 from config import PAGE_TITLE, PAGE_ICON, LAYOUT

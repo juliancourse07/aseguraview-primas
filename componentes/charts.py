@@ -2,14 +2,17 @@
 """
 Componente para gráficos Plotly
 """
-import plotly.graph_objects as go
 import pandas as pd
+from typing import TYPE_CHECKING, Any
+
+if TYPE_CHECKING:
+    import plotly.graph_objects as go
 
 
 def render_forecast_chart(hist_df: pd.DataFrame,
                           forecast_df: pd.DataFrame,
                           title: str = "Pronóstico de Primas",
-                          accuracy_df: pd.DataFrame = None) -> go.Figure:
+                          accuracy_df: pd.DataFrame = None) -> Any:
     """Genera gráfico de pronóstico con histórico, predicción y precisión histórica.
 
     Args:
@@ -20,6 +23,13 @@ def render_forecast_chart(hist_df: pd.DataFrame,
                      Si se proporciona, se añade una línea de precisión del modelo
                      mostrando forecast histórico vs real (últimos 6-12 meses validados).
     """
+    try:
+        import plotly.graph_objects as go
+    except ModuleNotFoundError as exc:
+        raise ModuleNotFoundError(
+            "plotly no está instalado. Ejecuta `pip install -r requirements.txt` para habilitar los gráficos."
+        ) from exc
+
     fig = go.Figure()
 
     if not hist_df.empty and 'FECHA' in hist_df.columns and 'Mensual' in hist_df.columns:
