@@ -127,7 +127,7 @@ def _build_deficit_heatmap_html(
         (
             '<div class="heatmap-banner">'
             f'<div class="heatmap-title">🔥 Déficit vs Meta — {html.escape(vista_mes)} | {html.escape(periodo_actual.strftime("%m/%Y"))}</div>'
-            '<div class="heatmap-legend">🔴 Rojo intenso = mayor faltante | ⬜ Crema = cero o superávit</div>'
+            '<div class="heatmap-legend">🔴 Rojo intenso = mayor superávit vs forecast | ⬜ Crema = cero o faltante</div>'
             '</div>'
         ),
         f'<div class="heatmap-grid" style="{grid_style}">',
@@ -222,7 +222,7 @@ body,.stApp {background:var(--bg);color:var(--fg);}
 .heatmap-row-label{font-size:13px;font-weight:600;color:#f8fafc;background:rgba(255,255,255,0.03);}
 .heatmap-cell{font-size:13px;font-weight:700;}
 .heatmap-cell-positive,.heatmap-total-positive{z-index:0;}
-.heatmap-cell-positive::after,.heatmap-total-positive::after{content:"";position:absolute;inset:8px;border-radius:12px;border:1px solid rgba(255,255,255,0.20);animation:heatPulse 1.15s ease-in-out infinite;pointer-events:none;}
+.heatmap-cell-positive::after,.heatmap-total-positive::after{content:"";position:absolute;inset:8px;border-radius:12px;border:1px solid rgba(255,255,255,0.20);animation:heatPulse 1.35s ease-in-out infinite;pointer-events:none;}
 .heatmap-note{padding:12px 16px;font-size:12px;color:#cbd5e1;background:rgba(255,255,255,0.02);}
 @keyframes heatPulse{
     0%,100%{transform:scale(1);opacity:0.30;box-shadow:0 0 0 0 rgba(239,68,68,0);}
@@ -902,7 +902,7 @@ with tabs[1]:
                             periodo_actual=periodo_actual,
                         )
                         st.markdown(heatmap_html, unsafe_allow_html=True)
-                        st.caption("🔴 Rojo escarlata = mayor faltante frente al forecast | ⬜ Blanco crema = cero o superávit | Los totales por línea se muestran antes del detalle por sucursal")
+                        st.caption("🔴 Rojo escarlata = mayor superávit frente al forecast | ⬜ Blanco crema = cero o faltante | Los totales por línea se muestran antes del detalle por sucursal")
 
         # Exportación unificada
         with BytesIO() as buf:
