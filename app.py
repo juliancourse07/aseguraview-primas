@@ -297,6 +297,21 @@ with tabs[1]:
     
     # Crear tabla de resumen
     resumen_lineas = []
+    if vista_mes == "Año":
+        previo_col = f"Previo {ref_year - 1} Año"
+        actual_col = f"Actual {ref_year} Año"
+    elif vista_mes == "Mes":
+        previo_col = f"Previo {ref_year - 1} Mes"
+        actual_col = f"Actual {ref_year} Mes"
+    else:
+        previo_col = f"Previo {ref_year - 1} Acumulado Mes"
+        actual_col = f"Actual {ref_year} Acumulado Mes"
+
+    faltante_col = "Faltante proyectado"
+    proyectado_vs_forecast_col = "Proyectado(-)Forecast"
+    compensacion_col = "Compensación de faltante"
+    req_dia_fc_col = "Req x día Fc (días calendario)"
+    req_dia_pres_col = "Req x día Pres (días calendario)"
     
     for linea in lineas_disponibles:
         df_linea = df_periodo[df_periodo['LINEA_PLUS'] == linea]
@@ -342,31 +357,30 @@ with tabs[1]:
             faltante_mes = presup_mes - prod_mes_actual
             pct_ejec_mes = (prod_mes_actual / presup_mes * 100) if presup_mes > 0 else 0.0
             forecast_ejec_pct = (forecast_mes / presup_mes * 100) if presup_mes > 0 else 0.0
-            deficit_vs_meta = presup_mes - forecast_mes
-            brecha_vs_previo = presup_mes - prod_mes_previo
-            crec_fc_cop = forecast_mes - prod_mes_previo
+            proyectado_vs_forecast = presup_mes - forecast_mes
+            compensacion_faltante = (proyectado_vs_forecast / presup_mes * 100) if presup_mes > 0 else 0.0
             crec_fc_pct = ((forecast_mes / prod_mes_previo) - 1) * 100 if prod_mes_previo > 0 else 0.0
 
             ultimo_dia_mes = periodo_actual + pd.offsets.MonthEnd(0)
-            dias_restantes = business_days_left(fecha_corte, ultimo_dia_mes)
+            fecha_corte_dia = pd.Timestamp(fecha_corte).normalize()
+            dias_restantes = max((ultimo_dia_mes.normalize() - fecha_corte_dia).days + 1, 0)
             req_dia_fc = (forecast_mes - prod_mes_actual) / dias_restantes if dias_restantes > 0 else 0.0
             req_dia_pres = (presup_mes - prod_mes_actual) / dias_restantes if dias_restantes > 0 else 0.0
 
             resumen_lineas.append({
                 'LINEA_PLUS': linea,
-                'Previo': prod_mes_previo,
-                'Actual': prod_mes_actual,
+                previo_col: prod_mes_previo,
+                actual_col: prod_mes_actual,
                 'Proyectado': presup_mes,
-                'Faltante': faltante_mes,
+                faltante_col: faltante_mes,
                 '% Ejec.': pct_ejec_mes,
                 'Forecast (mes)': forecast_mes,
-                'Forecast ejecución': forecast_ejec_pct,
-                'Déficit vs Meta': deficit_vs_meta,
-                'Brecha vs Previo': brecha_vs_previo,
-                'Crec. Fc (COP)': crec_fc_cop,
                 'Crec. Fc (%)': crec_fc_pct,
-                'Req x día Fc': req_dia_fc,
-                'Req x día Pres': req_dia_pres
+                'Forecast ejecución': forecast_ejec_pct,
+                proyectado_vs_forecast_col: proyectado_vs_forecast,
+                compensacion_col: compensacion_faltante,
+                req_dia_fc_col: req_dia_fc,
+                req_dia_pres_col: req_dia_pres
             })
 
         # ========== VISTA: AÑO ==========
@@ -464,24 +478,22 @@ with tabs[1]:
                 forecast_ejec_pct = 0.0
             else:
                 forecast_ejec_pct = (cierre_estimado / presup_anual) * 100
-            deficit_vs_meta = presup_anual - cierre_estimado
-            brecha_vs_previo = presup_anual - prod_anio_previo
-            crec_fc_cop = cierre_estimado - prod_anio_previo
+            proyectado_vs_forecast = presup_anual - cierre_estimado
+            compensacion_faltante = (proyectado_vs_forecast / presup_anual * 100) if presup_anual > 0 else 0.0
             crec_fc_pct = ((cierre_estimado / prod_anio_previo) - 1) * 100 if prod_anio_previo > 0 else 0.0
 
             resumen_lineas.append({
                 'LINEA_PLUS': linea,
-                'Previo (año)': prod_anio_previo,
-                'Actual (YTD)': prod_ytd_actual,
+                previo_col: prod_anio_previo,
+                actual_col: prod_ytd_actual,
                 'Proyectado (anual)': presup_anual,
-                'Faltante': faltante_anual,
+                faltante_col: faltante_anual,
                 '% Ejec.': pct_ejec_anual,
                 'Forecast (cierre)': cierre_estimado,
+                'Crec. Fc (%)': crec_fc_pct,
                 'Forecast ejecución': forecast_ejec_pct,
-                'Déficit vs Meta': deficit_vs_meta,
-                'Brecha vs Previo': brecha_vs_previo,
-                'Crec. Fc (COP)': crec_fc_cop,
-                'Crec. Fc (%)': crec_fc_pct
+                proyectado_vs_forecast_col: proyectado_vs_forecast,
+                compensacion_col: compensacion_faltante
             })
 
         # ========== VISTA: ACUMULADO MES ==========
@@ -539,24 +551,22 @@ with tabs[1]:
             faltante_ytd = presup_ytd - ytd_con_forecast
             pct_ejec_ytd = (prod_ytd_actual / presup_ytd * 100) if presup_ytd > 0 else 0.0
             forecast_ejec_pct = (ytd_con_forecast / presup_ytd * 100) if presup_ytd > 0 else 0.0
-            deficit_vs_meta = presup_ytd - ytd_con_forecast
-            brecha_vs_previo = presup_ytd - prod_ytd_previo
-            crec_fc_cop = ytd_con_forecast - prod_ytd_previo
+            proyectado_vs_forecast = presup_ytd - ytd_con_forecast
+            compensacion_faltante = (proyectado_vs_forecast / presup_ytd * 100) if presup_ytd > 0 else 0.0
             crec_fc_pct = ((ytd_con_forecast / prod_ytd_previo) - 1) * 100 if prod_ytd_previo > 0 else 0.0
-            
+             
             resumen_lineas.append({
                 'LINEA_PLUS': linea,
-                'Previo (YTD)': prod_ytd_previo,
-                'Actual (YTD)': prod_ytd_actual,
+                previo_col: prod_ytd_previo,
+                actual_col: prod_ytd_actual,
                 'Proyectado (YTD)': presup_ytd,
-                'Faltante': faltante_ytd,
+                faltante_col: faltante_ytd,
                 '% Ejec.': pct_ejec_ytd,
                 'Forecast (YTD + mes)': ytd_con_forecast,
+                'Crec. Fc (%)': crec_fc_pct,
                 'Forecast ejecución': forecast_ejec_pct,
-                'Déficit vs Meta': deficit_vs_meta,
-                'Brecha vs Previo': brecha_vs_previo,
-                'Crec. Fc (COP)': crec_fc_cop,
-                'Crec. Fc (%)': crec_fc_pct
+                proyectado_vs_forecast_col: proyectado_vs_forecast,
+                compensacion_col: compensacion_faltante
             })
     
     df_resumen = pd.DataFrame(resumen_lineas)
@@ -564,6 +574,15 @@ with tabs[1]:
     if not df_resumen.empty:
         st.markdown(f"**Período:** {periodo_actual.strftime('%m/%Y')}")
         st.markdown(f"**Ajuste conservador:** {filters['ajuste_pct']:.1f}%")
+        if vista_mes == "Mes":
+            proyectado_col = "Proyectado"
+            forecast_col = "Forecast (mes)"
+        elif vista_mes == "Año":
+            proyectado_col = "Proyectado (anual)"
+            forecast_col = "Forecast (cierre)"
+        else:
+            proyectado_col = "Proyectado (YTD)"
+            forecast_col = "Forecast (YTD + mes)"
         
         # Calcular totales
         totales = {}
@@ -572,28 +591,15 @@ with tabs[1]:
         for col in df_resumen.columns:
             if col == 'LINEA_PLUS':
                 continue
-            elif '% Ejec' in col or 'Crec. Fc (%)' in col or 'ejecución' in col:
-                if vista_mes == "Mes":
-                    if '% Ejec.' == col:
-                        totales[col] = (df_resumen['Actual'].sum() / df_resumen['Proyectado'].sum() * 100) if df_resumen['Proyectado'].sum() > 0 else 0.0
-                    elif 'Forecast ejecución' == col:
-                        totales[col] = (df_resumen['Forecast (mes)'].sum() / df_resumen['Proyectado'].sum() * 100) if df_resumen['Proyectado'].sum() > 0 else 0.0
-                    elif 'Crec. Fc (%)' == col:
-                        totales[col] = ((df_resumen['Forecast (mes)'].sum() / df_resumen['Previo'].sum()) - 1) * 100 if df_resumen['Previo'].sum() > 0 else 0.0
-                elif vista_mes == "Año":
-                    if '% Ejec.' == col:
-                        totales[col] = (df_resumen['Actual (YTD)'].sum() / df_resumen['Proyectado (anual)'].sum() * 100) if df_resumen['Proyectado (anual)'].sum() > 0 else 0.0
-                    elif 'Forecast ejecución' == col:
-                        totales[col] = (df_resumen['Forecast (cierre)'].sum() / df_resumen['Proyectado (anual)'].sum() * 100) if df_resumen['Proyectado (anual)'].sum() > 0 else 0.0
-                    elif 'Crec. Fc (%)' == col:
-                        totales[col] = ((df_resumen['Forecast (cierre)'].sum() / df_resumen['Previo (año)'].sum()) - 1) * 100 if df_resumen['Previo (año)'].sum() > 0 else 0.0
-                else:
-                    if '% Ejec.' == col:
-                        totales[col] = (df_resumen['Actual (YTD)'].sum() / df_resumen['Proyectado (YTD)'].sum() * 100) if df_resumen['Proyectado (YTD)'].sum() > 0 else 0.0
-                    elif 'Forecast ejecución' == col:
-                        totales[col] = (df_resumen['Forecast (YTD + mes)'].sum() / df_resumen['Proyectado (YTD)'].sum() * 100) if df_resumen['Proyectado (YTD)'].sum() > 0 else 0.0
-                    elif 'Crec. Fc (%)' == col:
-                        totales[col] = ((df_resumen['Forecast (YTD + mes)'].sum() / df_resumen['Previo (YTD)'].sum()) - 1) * 100 if df_resumen['Previo (YTD)'].sum() > 0 else 0.0
+            elif '% Ejec' in col or 'Crec. Fc (%)' in col or 'ejecución' in col or col == compensacion_col:
+                if '% Ejec.' == col:
+                    totales[col] = (df_resumen[actual_col].sum() / df_resumen[proyectado_col].sum() * 100) if df_resumen[proyectado_col].sum() > 0 else 0.0
+                elif 'Forecast ejecución' == col:
+                    totales[col] = (df_resumen[forecast_col].sum() / df_resumen[proyectado_col].sum() * 100) if df_resumen[proyectado_col].sum() > 0 else 0.0
+                elif 'Crec. Fc (%)' == col:
+                    totales[col] = ((df_resumen[forecast_col].sum() / df_resumen[previo_col].sum()) - 1) * 100 if df_resumen[previo_col].sum() > 0 else 0.0
+                elif compensacion_col == col:
+                    totales[col] = (df_resumen[proyectado_vs_forecast_col].sum() / df_resumen[proyectado_col].sum() * 100) if df_resumen[proyectado_col].sum() > 0 else 0.0
             else:
                 totales[col] = df_resumen[col].sum()
         
@@ -604,7 +610,7 @@ with tabs[1]:
         for col in df_display.columns:
             if col == 'LINEA_PLUS':
                 continue
-            elif '% Ejec' in col or 'Crec. Fc (%)' in col or 'ejecución' in col:
+            elif '% Ejec' in col or 'Crec. Fc (%)' in col or 'ejecución' in col or col == compensacion_col:
                 df_display[col] = df_display[col].apply(lambda x: f"{x:.1f}%" if pd.notna(x) else "-")
             else:
                 df_display[col] = df_display[col].apply(lambda x: fmt_cop(x) if pd.notna(x) else "-")
@@ -646,13 +652,13 @@ with tabs[1]:
                                 style += "color:#16a34a;font-weight:700;" if crec_val >= 0 else "color:#ef4444;font-weight:700;"
                         except:
                             pass
-                    elif col == 'Faltante':
+                    elif col == faltante_col:
                         try:
                             faltante_val = df_resumen.iloc[idx][col]
                             style += "color:#16a34a;" if faltante_val <= 0 else "color:#ef4444;"
                         except:
                             pass
-                    elif col in ['Déficit vs Meta', 'Brecha vs Previo']:
+                    elif col in [proyectado_vs_forecast_col, compensacion_col]:
                         try:
                             brecha_val = df_resumen.iloc[idx][col]
                             style += "color:#ef4444;font-weight:700;" if brecha_val > 0 else "color:#16a34a;font-weight:700;"
@@ -676,7 +682,7 @@ with tabs[1]:
             else:
                 # ── Obtener déficit por línea desde df_resumen (excluir fila TOTAL) ──
                 df_res_sin_total = df_resumen.iloc[:-1].copy()
-                deficit_por_linea = dict(zip(df_res_sin_total['LINEA_PLUS'], df_res_sin_total['Déficit vs Meta']))
+                deficit_por_linea = dict(zip(df_res_sin_total['LINEA_PLUS'], df_res_sin_total[proyectado_vs_forecast_col]))
 
                 # ── Obtener PRESUPUESTO por sucursal×linea según vista activa ──
                 if vista_mes == "Mes":
@@ -730,9 +736,13 @@ with tabs[1]:
                         st.info("📊 Todas las sucursales tienen déficit cero para los filtros actuales.")
                     elif not pivot_deficit.empty:
                         # Ordenar filas: mayor déficit total arriba
-                        pivot_deficit = pivot_deficit.loc[
+                        pivot_deficit_detalle = pivot_deficit.loc[
                             pivot_deficit.sum(axis=1).sort_values(ascending=False).index
                         ]
+                        totales_linea = pivot_deficit_detalle.sum(axis=0)
+                        pivot_deficit = pd.concat(
+                            [pivot_deficit_detalle, pd.DataFrame([totales_linea], index=['TOTAL LÍNEA'])]
+                        )
 
                         # Valores reales (con signo) para mostrar en texto
                         z_vals = pivot_deficit.values.astype(float)
@@ -772,7 +782,7 @@ with tabs[1]:
                             hovertemplate=(
                                 "<b>Sucursal:</b> %{y}<br>"
                                 "<b>Línea:</b> %{x}<br>"
-                                "<b>Déficit vs Meta:</b> %{text}<br>"
+                                "<b>Proyectado(-)Forecast:</b> %{text}<br>"
                                 "<extra></extra>"
                             ),
                         ))
@@ -802,7 +812,7 @@ with tabs[1]:
                         )
 
                         st.plotly_chart(fig_heat, use_container_width=True)
-                        st.caption("🔴 Rojo escarlata = mayor déficit (más falta para llegar a la meta) | ⬜ Blanco crema = cero o forecast supera la meta | Las sucursales con déficit cero en todas las líneas no aparecen")
+                        st.caption("🔴 Rojo escarlata = mayor déficit (más falta para llegar a la meta) | ⬜ Blanco crema = cero o forecast supera la meta | Incluye fila TOTAL LÍNEA en la parte superior del mapa")
 
         # Exportación unificada
         with BytesIO() as buf:
