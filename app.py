@@ -120,8 +120,8 @@ def _build_deficit_heatmap_html(
         '<div class="heatmap-shell">',
         (
             '<div class="heatmap-banner">'
-            f'<div class="heatmap-title">🔥 Déficit vs Meta — {html.escape(vista_mes)} | {html.escape(periodo_actual.strftime("%m/%Y"))}</div>'
-            '<div class="heatmap-legend">🔴 Rojo intenso = mayor superávit vs forecast | ⬜ Crema = cero o faltante</div>'
+            f'<div class="heatmap-title">🔥 Déficit vs Meta — {html.escape(vista_mes)} | {html.escape(periodo_actual.strftime("%m/%Y"))} (Proyectado(-)Forecast)</div>'
+            '<div class="heatmap-legend">🔴 Rojo intenso = valores positivos (superávit vs forecast) | ⬜ Crema = cero o faltante</div>'
             '</div>'
         ),
         f'<div class="heatmap-grid" style="{grid_style}">',
@@ -163,7 +163,7 @@ def _build_deficit_heatmap_html(
 
     html_parts.extend([
         '</div>',
-        '<div class="heatmap-note">⚠️ Los valores positivos laten suavemente porque indican alerta de superávit frente al forecast.</div>',
+        '<div class="heatmap-note">⚠️ La métrica es Proyectado(-)Forecast: los valores positivos tienen una animación suave como señal visual de seguimiento para superávit frente al forecast.</div>',
         '</div>',
     ])
     return ''.join(html_parts)
@@ -896,7 +896,7 @@ with tabs[1]:
                             periodo_actual=periodo_actual,
                         )
                         st.markdown(heatmap_html, unsafe_allow_html=True)
-                        st.caption("🔴 Rojo escarlata = mayor superávit frente al forecast | ⬜ Blanco crema = cero o faltante | Los totales por línea se muestran antes del detalle por sucursal")
+                        st.caption("🔴 Rojo escarlata = valores positivos de Proyectado(-)Forecast (superávit frente al forecast) | ⬜ Blanco crema = cero o faltante | Los totales por línea se muestran antes del detalle por sucursal")
 
         # Exportación unificada
         with BytesIO() as buf:
