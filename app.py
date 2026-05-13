@@ -92,9 +92,9 @@ def _build_deficit_heatmap_html(
     """Construye un mapa de calor HTML para ubicar los totales arriba de cada línea."""
     columnas = list(pivot_deficit_detalle.columns)
     total_values = pd.to_numeric(totales_linea, errors='coerce').fillna(0.0) if not totales_linea.empty else pd.Series(dtype=float)
-    detail_values = pd.to_numeric(pivot_deficit_detalle.to_numpy().ravel(), errors='coerce') if not pivot_deficit_detalle.empty else np.array([0.0])
+    detail_values = pivot_deficit_detalle.to_numpy(dtype=float).ravel() if not pivot_deficit_detalle.empty else np.array([0.0], dtype=float)
     combined_values = np.concatenate([detail_values, total_values.to_numpy()]) if not total_values.empty else detail_values
-    positivos = [float(v) for v in combined_values if float(v) > 0]
+    positivos = [float(v) for v in combined_values.astype(float) if v > 0]
     max_positive = max(positivos, default=1.0)
     grid_style = f"grid-template-columns:minmax(190px,1.35fr) repeat({len(columnas)}, minmax(120px,1fr));"
 
@@ -204,6 +204,9 @@ body,.stApp {background:var(--bg);color:var(--fg);}
     0%,100%{transform:scale(1);opacity:0.30;box-shadow:0 0 0 0 rgba(239,68,68,0);}
     45%{transform:scale(1.035);opacity:0.80;box-shadow:0 0 0 8px rgba(239,68,68,0.10);}
     75%{transform:scale(1.01);opacity:0.45;box-shadow:0 0 0 3px rgba(239,68,68,0.16);}
+}
+@media (prefers-reduced-motion: reduce){
+    .heatmap-cell-positive::after,.heatmap-total-positive::after{animation:none;opacity:0.45;box-shadow:0 0 0 2px rgba(239,68,68,0.14);}
 }
 </style>
 """, unsafe_allow_html=True)
