@@ -41,6 +41,8 @@ _UMBRAL_RITMO_MEDIO = 80         # % mínimo para naranja (ritmo medio)
 _COLOR_BUEN_RITMO = '#16a34a'    # verde
 _COLOR_RITMO_MEDIO = '#f59e0b'   # naranja
 _COLOR_RITMO_LENTO = '#ef4444'   # rojo
+_HEATMAP_MIN_BLEND_RATIO = 0.2
+_HEATMAP_BLEND_RANGE = 0.8
 
 
 def _hex_to_rgba(hex_color: str, alpha: float = 0.1) -> str:
@@ -61,11 +63,24 @@ def _blend_hex(start_hex: str, end_hex: str, ratio: float) -> str:
 
 
 def _heatmap_cell_tokens(value: float, max_positive: float, is_total: bool = False) -> tuple[str, str, str]:
-    """Devuelve fondo, color de texto y borde para cada celda del mapa."""
+    """Devuelve tokens visuales para una celda del mapa.
+
+    Args:
+        value: Valor real mostrado en la celda.
+        max_positive: Referencia del máximo positivo para escalar la intensidad.
+        is_total: Indica si la celda pertenece a la fila de totales.
+
+    Returns:
+        Tupla de (background, text_color, border_color).
+    """
     value = float(value)
     if value > 0:
         ratio = min(value / max_positive, 1.0) if max_positive > 0 else 0.0
-        accent = _blend_hex("#f87171" if is_total else "#e53e2f", "#5c0a04", 0.2 + ratio * 0.8)
+        accent = _blend_hex(
+            "#f87171" if is_total else "#e53e2f",
+            "#5c0a04",
+            _HEATMAP_MIN_BLEND_RATIO + ratio * _HEATMAP_BLEND_RANGE,
+        )
         background = (
             f"linear-gradient(135deg, {_hex_to_rgba(accent, 0.94)}, "
             f"{_hex_to_rgba('#7f1d1d', 0.98)})"
@@ -94,7 +109,7 @@ def _build_deficit_heatmap_html(
     total_values = pd.to_numeric(totales_linea, errors='coerce').fillna(0.0) if not totales_linea.empty else pd.Series(dtype=float)
     detail_values = pivot_deficit_detalle.to_numpy(dtype=float).ravel() if not pivot_deficit_detalle.empty else np.array([0.0], dtype=float)
     combined_values = np.concatenate([detail_values, total_values.to_numpy()]) if not total_values.empty else detail_values
-    positivos = [float(v) for v in combined_values.astype(float) if v > 0]
+    positivos = [v for v in combined_values.astype(float) if v > 0]
     max_positive = max(positivos, default=1.0)
     grid_style = f"grid-template-columns:minmax(190px,1.35fr) repeat({len(columnas)}, minmax(120px,1fr));"
 
@@ -102,7 +117,7 @@ def _build_deficit_heatmap_html(
         '<div class="heatmap-shell">',
         (
             '<div class="heatmap-banner">'
-            f'<div class="heatmap-title">🔥 Déficit vs Meta — {html.escape(vista_mes)} | {periodo_actual.strftime("%m/%Y")}</div>'
+            f'<div class="heatmap-title">🔥 Déficit vs Meta — {html.escape(vista_mes)} | {html.escape(periodo_actual.strftime("%m/%Y"))}</div>'
             '<div class="heatmap-legend">🔴 Rojo intenso = mayor faltante | ⬜ Crema = cero o superávit</div>'
             '</div>'
         ),
