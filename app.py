@@ -93,7 +93,8 @@ def _build_deficit_heatmap_html(
     columnas = list(pivot_deficit_detalle.columns)
     total_values = pd.to_numeric(totales_linea, errors='coerce').fillna(0.0) if not totales_linea.empty else pd.Series(dtype=float)
     detail_values = pd.to_numeric(pivot_deficit_detalle.to_numpy().ravel(), errors='coerce') if not pivot_deficit_detalle.empty else np.array([0.0])
-    positivos = [float(v) for v in list(detail_values) + total_values.tolist() if float(v) > 0]
+    combined_values = np.concatenate([detail_values, total_values.to_numpy()]) if not total_values.empty else detail_values
+    positivos = [float(v) for v in combined_values if float(v) > 0]
     max_positive = max(positivos, default=1.0)
     grid_style = f"grid-template-columns:minmax(190px,1.35fr) repeat({len(columnas)}, minmax(120px,1fr));"
 
@@ -864,7 +865,7 @@ with tabs[1]:
                         ]
                         totales_linea = pivot_deficit_detalle.sum(axis=0)
                         pivot_deficit = pd.concat(
-                            [pd.DataFrame([totales_linea], index=['TOTAL LÍNEA']), pivot_deficit_detalle]
+                            [pivot_deficit_detalle, pd.DataFrame([totales_linea], index=['TOTAL LÍNEA'])]
                         )
 
                         heatmap_html = _build_deficit_heatmap_html(
