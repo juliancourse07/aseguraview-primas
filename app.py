@@ -71,7 +71,9 @@ def _heatmap_cell_tokens(value: float, max_positive: float, is_total: bool = Fal
         is_total: Indica si la celda pertenece a la fila de totales.
 
     Returns:
-        Tupla de (background, text_color, border_color).
+        background: Valor CSS del fondo con gradiente.
+        text_color: Color del texto de la celda.
+        border_color: Color del borde usado para separar la celda.
     """
     value = float(value)
     if value > 0:
@@ -106,8 +108,15 @@ def _build_deficit_heatmap_html(
 ) -> str:
     """Construye un mapa de calor HTML para ubicar los totales arriba de cada línea."""
     columnas = list(pivot_deficit_detalle.columns)
-    total_values = pd.to_numeric(totales_linea, errors='coerce').fillna(0.0) if not totales_linea.empty else pd.Series(dtype=float)
-    detail_values = pivot_deficit_detalle.to_numpy(dtype=float).ravel() if not pivot_deficit_detalle.empty else np.array([0.0], dtype=float)
+    if totales_linea.empty:
+        total_values = pd.Series(dtype=float)
+    else:
+        total_values = pd.to_numeric(totales_linea, errors='coerce').fillna(0.0)
+
+    if pivot_deficit_detalle.empty:
+        detail_values = np.array([0.0], dtype=float)
+    else:
+        detail_values = pivot_deficit_detalle.to_numpy(dtype=float).ravel()
     combined_values = np.concatenate([detail_values, total_values.to_numpy()]) if not total_values.empty else detail_values
     positivos = [v for v in combined_values.astype(float) if v > 0]
     max_positive = max(positivos, default=1.0)
