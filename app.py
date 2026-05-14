@@ -48,6 +48,7 @@ _COLOR_RITMO_MEDIO = '#f59e0b'   # naranja
 _COLOR_RITMO_LENTO = '#ef4444'   # rojo
 _HEATMAP_MIN_BLEND_RATIO = 0.2
 _HEATMAP_BLEND_RANGE = 0.8
+_DETAILED_CHART_HEIGHT = 500
 
 
 def _hex_to_rgba(hex_color: str, alpha: float = 0.1) -> str:
@@ -308,13 +309,15 @@ def serialize_series_for_cache(serie: pd.Series) -> tuple:
 
 
 def fmt_cop_short(value: float) -> str:
-    """Formato corto para etiquetas de gráficos."""
+    """Formato corto para etiquetas de gráficos (ej: $2.3M, $450.8K, $980)."""
     value = float(value)
-    if value >= 1_000_000:
-        return f"${value / 1_000_000:.1f}M"
-    if value >= 1_000:
-        return f"${value / 1_000:.1f}K"
-    return fmt_cop(value)
+    sign = "-" if value < 0 else ""
+    abs_value = abs(value)
+    if abs_value >= 1_000_000:
+        return f"{sign}${abs_value / 1_000_000:.1f}M"
+    if abs_value >= 1_000:
+        return f"{sign}${abs_value / 1_000:.1f}K"
+    return f"{sign}{fmt_cop(abs_value)}"
 
 
 def _line_adjustment_factor(linea: str) -> float:
@@ -464,9 +467,18 @@ def should_show_ley_garantias(df_scope: pd.DataFrame, linea_seleccionada: str) -
 
 
 def get_ley_garantias_end_date() -> pd.Timestamp:
-    if LEY_GARANTIAS_2026.get('usar_segunda_vuelta', False):
-        return pd.Timestamp(LEY_GARANTIAS_2026['fin_segunda_vuelta'])
-    return pd.Timestamp(LEY_GARANTIAS_2026['fin_primera_vuelta'])
+    ley_garantias_key = (
+        'fin_segunda_vuelta'
+        if LEY_GARANTIAS_2026.get('usar_segunda_vuelta', False)
+        else 'fin_primera_vuelta'
+    )
+    ley_end_raw = LEY_GARANTIAS_2026.get(ley_garantias_key)
+    if not ley_end_raw:
+        return pd.NaT
+    try:
+        return pd.Timestamp(ley_end_raw)
+    except Exception:
+        return pd.NaT
 
 
 def render_detailed_forecast_charts(
@@ -543,19 +555,20 @@ def render_detailed_forecast_charts(
 
     if show_ley:
         ley_end = get_ley_garantias_end_date()
-        for fig in [fig_monthly, fig_accum]:
-            fig.add_vline(
-                x=ley_end,
-                line_dash='dot',
-                line_color='#f59e0b',
-                line_width=2,
-                annotation_text='Fin Ley de Garantías',
-                annotation_position='top left',
-            )
+        if pd.notna(ley_end):
+            for fig in [fig_monthly, fig_accum]:
+                fig.add_vline(
+                    x=ley_end,
+                    line_dash='dot',
+                    line_color='#f59e0b',
+                    line_width=2,
+                    annotation_text='Fin Ley de Garantías',
+                    annotation_position='top left',
+                )
 
     common_layout = dict(
         template='plotly_dark',
-        height=500,
+        height=_DETAILED_CHART_HEIGHT,
         margin=dict(l=60, r=60, t=60, b=60),
         showlegend=True,
         legend=dict(x=1, y=1, xanchor='right', yanchor='top'),
@@ -592,6 +605,8 @@ def render_detailed_forecast_table(forecast_df: pd.DataFrame) -> None:
         'IC Acum Mín': forecast_df['IC_acum_lo'],
         'IC Acum Máx': forecast_df['IC_acum_hi'],
     })
+    if summary_df.empty:
+        return
 
     total_row = {
         'Mes': 'TOTAL',
@@ -1498,7 +1513,7 @@ with tabs[2]:
         is_december_complete = (
             ref_year_detailed == fecha_corte.year
             and fecha_corte.month == 12
-            and pd.Timestamp(fecha_corte).is_month_end
+            and fecha_corte.is_month_end
         )
         if fecha_corte.year != ref_year_detailed:
             st.info(f"ℹ️ El pronóstico detallado se calcula para el año de análisis {ref_year_detailed}")
@@ -1523,7 +1538,8 @@ with tabs[2]:
                 fecha_corte,
             )
         except Exception as exc:
-            st.error(f"Error generando pronóstico consolidado: {exc}")
+            st.error("Error generando pronóstico consolidado")
+            st.exception(exc)
             forecast_detailed = pd.DataFrame()
 
         if not forecast_detailed.empty:
@@ -1569,7 +1585,8 @@ with tabs[2]:
                         fecha_corte,
                     )
                 except Exception as exc:
-                    st.error(f"Error generando pronóstico por compañía: {exc}")
+                    st.error("Error generando pronóstico por compañía")
+                    st.exception(exc)
                     forecast_compania = pd.DataFrame()
 
                 if forecast_compania.empty:
