@@ -558,7 +558,7 @@ def render_detailed_forecast_charts(
         if pd.notna(ley_end):
             for fig in [fig_monthly, fig_accum]:
                 fig.add_vline(
-                    x=ley_end,
+                    x=ley_end.strftime('%Y-%m-%d'),
                     line_dash='dot',
                     line_color='#f59e0b',
                     line_width=2,
