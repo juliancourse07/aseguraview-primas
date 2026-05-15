@@ -49,6 +49,7 @@ _COLOR_RITMO_LENTO = '#ef4444'   # rojo
 _HEATMAP_MIN_BLEND_RATIO = 0.2
 _HEATMAP_BLEND_RANGE = 0.8
 _DETAILED_CHART_HEIGHT = 500
+_DETAILED_FORECAST_CACHE_TTL_SECONDS = 1800
 
 
 def _hex_to_rgba(hex_color: str, alpha: float = 0.1) -> str:
@@ -414,13 +415,30 @@ def _compute_single_line_detailed_forecast(
     return forecast_df.sort_values('FECHA')
 
 
+def _serialize_dataframe_for_cache(df: pd.DataFrame) -> tuple:
+    """Convierte DataFrame en tuple hasheable para st.cache_data.
+
+    Retorna una tupla (records_list, columns_list) para reconstruir el DataFrame.
+    """
+    if df.empty:
+        return ([], [])
+    return (df.to_dict('records'), list(df.columns))
+
+
+@st.cache_data(ttl=_DETAILED_FORECAST_CACHE_TTL_SECONDS, show_spinner=False)
 def build_detailed_forecast(
-    df_scope: pd.DataFrame,
+    df_scope_hash: tuple,
     linea_seleccionada: str,
     conservative_factor: float,
     ref_year: int,
-    fecha_corte: pd.Timestamp,
+    fecha_corte_str: str,
 ) -> pd.DataFrame:
+    df_scope = pd.DataFrame(df_scope_hash[0], columns=df_scope_hash[1])
+    # Al reconstruir desde records, FECHA puede regresar como string/objeto.
+    if 'FECHA' in df_scope.columns and not pd.api.types.is_datetime64_any_dtype(df_scope['FECHA']):
+        df_scope['FECHA'] = pd.to_datetime(df_scope['FECHA'], errors='coerce')
+    fecha_corte = pd.Timestamp(fecha_corte_str)
+
     if df_scope.empty or 'LINEA_PLUS' not in df_scope.columns:
         return pd.DataFrame()
 
@@ -556,9 +574,10 @@ def render_detailed_forecast_charts(
     if show_ley:
         ley_end = get_ley_garantias_end_date()
         if pd.notna(ley_end):
+            ley_end_str = ley_end.strftime('%Y-%m-%d')
             for fig in [fig_monthly, fig_accum]:
                 fig.add_vline(
-                    x=ley_end,
+                    x=ley_end_str,
                     line_dash='dot',
                     line_color='#f59e0b',
                     line_width=2,
@@ -1520,86 +1539,111 @@ with tabs[2]:
         if is_december_complete:
             st.info("ℹ️ Diciembre está completo. No hay meses restantes por pronosticar en el año en curso.")
 
-        st.markdown("### 📈 Forecast Consolidado por Línea")
-        lineas_detailed = sorted(df_filtered['LINEA_PLUS'].dropna().unique())
-        linea_detailed = st.selectbox(
-            "Línea de negocio",
-            options=["TODAS"] + lineas_detailed,
-            index=0,
-            key="detalle_linea_selector",
-        )
-
-        try:
-            forecast_detailed = build_detailed_forecast(
-                df_filtered,
-                linea_detailed,
+        st.markdown("### 📈 Pronóstico Consolidado (Todas las Líneas)")
+        with st.spinner("Calculando pronóstico consolidado..."):
+            df_hash = _serialize_dataframe_for_cache(df_filtered)
+            forecast_todas = build_detailed_forecast(
+                df_hash,
+                "TODAS",
                 filters['conservative_factor'],
                 ref_year_detailed,
-                fecha_corte,
+                str(fecha_corte.date()),
             )
-        except Exception as exc:
-            st.error("Error generando pronóstico consolidado")
-            st.exception(exc)
-            forecast_detailed = pd.DataFrame()
 
-        if not forecast_detailed.empty:
+        if not forecast_todas.empty:
             render_detailed_forecast_charts(
-                forecast_detailed,
-                linea_detailed,
+                forecast_todas,
+                "Consolidado - TODAS",
                 ref_year_detailed,
-                should_show_ley_garantias(df_filtered, linea_detailed),
+                should_show_ley_garantias(df_filtered, "TODAS"),
             )
-            render_detailed_forecast_table(forecast_detailed)
+            render_detailed_forecast_table(forecast_todas)
         else:
-            st.warning("No hay datos suficientes para generar el pronóstico detallado de la línea seleccionada")
+            st.warning("No hay datos suficientes para el pronóstico consolidado")
 
+        st.markdown("---")
+        st.markdown("### 📊 Pronóstico por Línea Individual")
+        lineas_detailed = sorted(df_filtered['LINEA_PLUS'].dropna().unique())
+        for linea in lineas_detailed:
+            with st.expander(f"🔍 Ver pronóstico de **{linea}**", expanded=False):
+                df_linea = df_filtered[df_filtered['LINEA_PLUS'] == linea]
+                df_linea_hash = _serialize_dataframe_for_cache(df_linea)
+                forecast_linea = build_detailed_forecast(
+                    df_linea_hash,
+                    linea,
+                    filters['conservative_factor'],
+                    ref_year_detailed,
+                    str(fecha_corte.date()),
+                )
+
+                if not forecast_linea.empty:
+                    render_detailed_forecast_charts(
+                        forecast_linea,
+                        linea,
+                        ref_year_detailed,
+                        should_show_ley_garantias(df_filtered, linea),
+                    )
+                    render_detailed_forecast_table(forecast_linea)
+                else:
+                    st.warning(f"No hay datos suficientes para {linea}")
+
+        st.markdown("---")
         st.markdown("### 🏢 Pronóstico por Compañía")
         if 'COMPANIA' not in df_filtered.columns:
-            st.info("ℹ️ La columna COMPANIA no está disponible en los datos actuales")
+            st.info("ℹ️ La columna COMPANIA no está disponible")
         else:
             companias = sorted(df_filtered['COMPANIA'].dropna().unique())
             if not companias:
-                st.warning("No hay compañías disponibles con los filtros actuales")
+                st.warning("No hay compañías disponibles")
             else:
-                compania_sel = st.selectbox(
-                    "Compañía",
-                    options=companias,
-                    index=0,
-                    key="detalle_compania_selector",
-                )
-                df_compania = df_filtered[df_filtered['COMPANIA'] == compania_sel].copy()
-                lineas_compania = sorted(df_compania['LINEA_PLUS'].dropna().unique())
-                linea_compania = st.selectbox(
-                    "Línea (compañía)",
-                    options=["TODAS"] + lineas_compania,
-                    index=0,
-                    key="detalle_linea_compania_selector",
-                )
+                for compania in companias:
+                    with st.expander(f"🏢 Ver pronóstico de **{compania}**", expanded=False):
+                        df_comp = df_filtered[df_filtered['COMPANIA'] == compania]
+                        lineas_comp = sorted(df_comp['LINEA_PLUS'].dropna().unique())
 
-                try:
-                    forecast_compania = build_detailed_forecast(
-                        df_compania,
-                        linea_compania,
-                        filters['conservative_factor'],
-                        ref_year_detailed,
-                        fecha_corte,
-                    )
-                except Exception as exc:
-                    st.error("Error generando pronóstico por compañía")
-                    st.exception(exc)
-                    forecast_compania = pd.DataFrame()
+                        st.markdown(f"#### {compania} - TODAS las líneas")
+                        df_comp_hash = _serialize_dataframe_for_cache(df_comp)
+                        forecast_comp_todas = build_detailed_forecast(
+                            df_comp_hash,
+                            "TODAS",
+                            filters['conservative_factor'],
+                            ref_year_detailed,
+                            str(fecha_corte.date()),
+                        )
 
-                if forecast_compania.empty:
-                    st.warning("No hay datos suficientes para la compañía y línea seleccionadas")
-                else:
-                    chart_label_compania = f"{compania_sel} - {linea_compania}"
-                    render_detailed_forecast_charts(
-                        forecast_compania,
-                        chart_label_compania,
-                        ref_year_detailed,
-                        should_show_ley_garantias(df_compania, linea_compania),
-                    )
-                    render_detailed_forecast_table(forecast_compania)
+                        if not forecast_comp_todas.empty:
+                            render_detailed_forecast_charts(
+                                forecast_comp_todas,
+                                f"{compania} - TODAS",
+                                ref_year_detailed,
+                                should_show_ley_garantias(df_comp, "TODAS"),
+                            )
+                            render_detailed_forecast_table(forecast_comp_todas)
+                        else:
+                            st.warning(f"No hay datos suficientes para {compania} - TODAS")
+
+                        for linea_comp in lineas_comp:
+                            st.markdown(f"##### {compania} - {linea_comp}")
+                            df_comp_linea = df_comp[df_comp['LINEA_PLUS'] == linea_comp]
+                            df_comp_linea_hash = _serialize_dataframe_for_cache(df_comp_linea)
+                            forecast_comp_linea = build_detailed_forecast(
+                                df_comp_linea_hash,
+                                linea_comp,
+                                filters['conservative_factor'],
+                                ref_year_detailed,
+                                str(fecha_corte.date()),
+                            )
+
+                            if not forecast_comp_linea.empty:
+                                render_detailed_forecast_charts(
+                                    forecast_comp_linea,
+                                    f"{compania} - {linea_comp}",
+                                    ref_year_detailed,
+                                    should_show_ley_garantias(df_comp_linea, linea_comp),
+                                )
+                                render_detailed_forecast_table(forecast_comp_linea)
+                            else:
+                                st.warning(f"No hay datos suficientes para {compania} - {linea_comp}")
 
 # ========== TAB 4: FIANZAS ==========
 with tabs[3]:
