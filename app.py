@@ -49,6 +49,7 @@ _COLOR_RITMO_LENTO = '#ef4444'   # rojo
 _HEATMAP_MIN_BLEND_RATIO = 0.2
 _HEATMAP_BLEND_RANGE = 0.8
 _DETAILED_CHART_HEIGHT = 500
+_DETAILED_FORECAST_CACHE_TTL_SECONDS = 1800
 
 
 def _hex_to_rgba(hex_color: str, alpha: float = 0.1) -> str:
@@ -415,13 +416,16 @@ def _compute_single_line_detailed_forecast(
 
 
 def _serialize_dataframe_for_cache(df: pd.DataFrame) -> tuple:
-    """Convierte DataFrame en tuple hasheable para st.cache_data."""
+    """Convierte DataFrame en tuple hasheable para st.cache_data.
+
+    Retorna una tupla (records_list, columns_list) para reconstruir el DataFrame.
+    """
     if df.empty:
         return ([], [])
     return (df.to_dict('records'), list(df.columns))
 
 
-@st.cache_data(ttl=1800, show_spinner=False)
+@st.cache_data(ttl=_DETAILED_FORECAST_CACHE_TTL_SECONDS, show_spinner=False)
 def build_detailed_forecast(
     df_scope_hash: tuple,
     linea_seleccionada: str,
@@ -430,7 +434,8 @@ def build_detailed_forecast(
     fecha_corte_str: str,
 ) -> pd.DataFrame:
     df_scope = pd.DataFrame(df_scope_hash[0], columns=df_scope_hash[1])
-    if 'FECHA' in df_scope.columns:
+    # Al reconstruir desde records, FECHA puede regresar como string/objeto.
+    if 'FECHA' in df_scope.columns and not pd.api.types.is_datetime64_any_dtype(df_scope['FECHA']):
         df_scope['FECHA'] = pd.to_datetime(df_scope['FECHA'], errors='coerce')
     fecha_corte = pd.Timestamp(fecha_corte_str)
 
