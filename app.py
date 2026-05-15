@@ -658,7 +658,7 @@ def render_detailed_forecast_table(forecast_df: pd.DataFrame) -> None:
         'IC Acum Mín': summary_df['IC Acum Mín'].iloc[-1],
         'IC Acum Máx': summary_df['IC Acum Máx'].iloc[-1],
     }
-    summary_df = pd.concat([summary_df, pd.Data.DataFrame([total_row])], ignore_index=True)
+    summary_df = pd.concat([summary_df, pd.DataFrame([total_row])], ignore_index=True)
 
     display_df = summary_df.copy()
     for col in [
