@@ -9,12 +9,46 @@ from dotenv import load_dotenv
 load_dotenv()
 
 # ==================== GOOGLE SHEETS ====================
+LEGACY_SHEET_GIDS = {
+    'Hoja1': 878289681,
+    'Hoja2': 434275536,
+}
+
+
+def _get_sheet_gid(default_gid: int, *env_vars: str) -> int:
+    """Obtiene un GID desde variables nuevas o legacy."""
+    raw_value = None
+
+    for env_var in env_vars:
+        raw_value = os.getenv(env_var)
+        if raw_value is not None:
+            break
+
+    if raw_value is None:
+        return default_gid
+
+    raw_value = raw_value.strip()
+
+    if raw_value in LEGACY_SHEET_GIDS:
+        return LEGACY_SHEET_GIDS[raw_value]
+
+    try:
+        return int(raw_value)
+    except ValueError:
+        return default_gid
+
+
 SHEET_ID = os.getenv(
     'GOOGLE_SHEET_ID', 
     '1ThVwW3IbkL7Dw_Vrs9heT1QMiHDZw1Aj-n0XNbDi9i8'
 )
-SHEET_NAME_DATOS = os.getenv('SHEET_NAME_DATOS', 'Hoja1')
-SHEET_NAME_FECHA_CORTE = os.getenv('SHEET_NAME_FECHA', 'Hoja2')
+SHEET_GID_DATOS = _get_sheet_gid(878289681, 'SHEET_GID_DATOS', 'SHEET_NAME_DATOS')
+SHEET_GID_FECHA_CORTE = _get_sheet_gid(
+    434275536,
+    'SHEET_GID_FECHA_CORTE',
+    'SHEET_GID_FECHA',
+    'SHEET_NAME_FECHA',
+)
 
 # ==================== FORMATO DE FECHAS ====================
 DATE_FORMAT = '%d/%m/%Y'  # Formato colombiano: 1/1/2007
