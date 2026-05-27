@@ -29,6 +29,8 @@ def get_sheet_gid_from_env(default_gid: int, *env_vars: str) -> int:
     Returns:
         El GID configurado o el valor por defecto si no existe o es inválido.
     """
+    raw_value = None
+
     for env_var in env_vars:
         raw_value = os.getenv(env_var)
         if raw_value is not None:
