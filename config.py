@@ -35,7 +35,8 @@ def get_sheet_gid_from_env(default_gid: int, *env_vars: str) -> int:
         raw_value = os.getenv(env_var)
         if raw_value is not None:
             break
-    else:
+
+    if raw_value is None:
         return default_gid
 
     raw_value = raw_value.strip()
@@ -63,7 +64,6 @@ SHEET_GID_DATOS = get_sheet_gid_from_env(
 SHEET_GID_FECHA_CORTE = get_sheet_gid_from_env(
     DEFAULT_SHEET_GID_FECHA_CORTE,
     'SHEET_GID_FECHA_CORTE',
-    'SHEET_GID_FECHA',
     'SHEET_NAME_FECHA',
 )
 
