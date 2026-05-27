@@ -18,7 +18,7 @@ LEGACY_SHEET_GIDS = {
 }
 
 
-def _get_sheet_gid(default_gid: int, *env_vars: str) -> int:
+def get_sheet_gid_from_env(default_gid: int, *env_vars: str) -> int:
     """
     Obtiene un GID desde variables de entorno nuevas o legacy.
 
@@ -29,17 +29,16 @@ def _get_sheet_gid(default_gid: int, *env_vars: str) -> int:
     Returns:
         El GID configurado o el valor por defecto si no existe o es inválido.
     """
-    raw_value = None
-
     for env_var in env_vars:
         raw_value = os.getenv(env_var)
         if raw_value is not None:
             break
-
-    if raw_value is None:
+    else:
         return default_gid
 
     raw_value = raw_value.strip()
+    if not raw_value:
+        return default_gid
 
     if raw_value in LEGACY_SHEET_GIDS:
         return LEGACY_SHEET_GIDS[raw_value]
@@ -54,12 +53,12 @@ SHEET_ID = os.getenv(
     'GOOGLE_SHEET_ID', 
     '1ThVwW3IbkL7Dw_Vrs9heT1QMiHDZw1Aj-n0XNbDi9i8'
 )
-SHEET_GID_DATOS = _get_sheet_gid(
+SHEET_GID_DATOS = get_sheet_gid_from_env(
     DEFAULT_SHEET_GID_DATOS,
     'SHEET_GID_DATOS',
     'SHEET_NAME_DATOS',
 )
-SHEET_GID_FECHA_CORTE = _get_sheet_gid(
+SHEET_GID_FECHA_CORTE = get_sheet_gid_from_env(
     DEFAULT_SHEET_GID_FECHA_CORTE,
     'SHEET_GID_FECHA_CORTE',
     'SHEET_GID_FECHA',
