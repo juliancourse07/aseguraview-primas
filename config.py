@@ -9,66 +9,12 @@ from dotenv import load_dotenv
 load_dotenv()
 
 # ==================== GOOGLE SHEETS ====================
-DEFAULT_SHEET_GID_DATOS = 878289681
-DEFAULT_SHEET_GID_FECHA_CORTE = 434275536
-
-LEGACY_SHEET_GIDS = {
-    'Hoja1': DEFAULT_SHEET_GID_DATOS,
-    'Hoja2': DEFAULT_SHEET_GID_FECHA_CORTE,
-}
-
-
-def get_sheet_gid_from_env(default_gid: int, *env_vars: str) -> int:
-    """
-    Obtiene un GID desde variables de entorno nuevas o legacy.
-
-    También convierte nombres legacy conocidos de hojas (por ejemplo, Hoja1/Hoja2)
-    al GID correspondiente para mantener compatibilidad.
-
-    Args:
-        default_gid: GID usado como respaldo si no hay configuración válida.
-        env_vars: Variables de entorno a revisar en orden de prioridad.
-
-    Returns:
-        El GID configurado o el valor por defecto si no existe o es inválido.
-    """
-    raw_value = None
-
-    for env_var in env_vars:
-        raw_value = os.getenv(env_var)
-        if raw_value is not None:
-            break
-
-    if raw_value is None:
-        return default_gid
-
-    raw_value = raw_value.strip()
-    if not raw_value:
-        return default_gid
-
-    if raw_value in LEGACY_SHEET_GIDS:
-        return LEGACY_SHEET_GIDS[raw_value]
-
-    try:
-        return int(raw_value)
-    except ValueError:
-        return default_gid
-
-
 SHEET_ID = os.getenv(
     'GOOGLE_SHEET_ID', 
     '1ThVwW3IbkL7Dw_Vrs9heT1QMiHDZw1Aj-n0XNbDi9i8'
 )
-SHEET_GID_DATOS = get_sheet_gid_from_env(
-    DEFAULT_SHEET_GID_DATOS,
-    'SHEET_GID_DATOS',
-    'SHEET_NAME_DATOS',
-)
-SHEET_GID_FECHA_CORTE = get_sheet_gid_from_env(
-    DEFAULT_SHEET_GID_FECHA_CORTE,
-    'SHEET_GID_FECHA_CORTE',
-    'SHEET_NAME_FECHA',
-)
+SHEET_NAME_DATOS = os.getenv('SHEET_NAME_DATOS', 'Hoja1')
+SHEET_NAME_FECHA_CORTE = os.getenv('SHEET_NAME_FECHA', 'Hoja2')
 
 # ==================== FORMATO DE FECHAS ====================
 DATE_FORMAT = '%d/%m/%Y'  # Formato colombiano: 1/1/2007
