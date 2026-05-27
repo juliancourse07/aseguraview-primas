@@ -9,9 +9,12 @@ from dotenv import load_dotenv
 load_dotenv()
 
 # ==================== GOOGLE SHEETS ====================
+DEFAULT_SHEET_GID_DATOS = 878289681
+DEFAULT_SHEET_GID_FECHA_CORTE = 434275536
+
 LEGACY_SHEET_GIDS = {
-    'Hoja1': 878289681,
-    'Hoja2': 434275536,
+    'Hoja1': DEFAULT_SHEET_GID_DATOS,
+    'Hoja2': DEFAULT_SHEET_GID_FECHA_CORTE,
 }
 
 
@@ -51,9 +54,13 @@ SHEET_ID = os.getenv(
     'GOOGLE_SHEET_ID', 
     '1ThVwW3IbkL7Dw_Vrs9heT1QMiHDZw1Aj-n0XNbDi9i8'
 )
-SHEET_GID_DATOS = _get_sheet_gid(878289681, 'SHEET_GID_DATOS', 'SHEET_NAME_DATOS')
+SHEET_GID_DATOS = _get_sheet_gid(
+    DEFAULT_SHEET_GID_DATOS,
+    'SHEET_GID_DATOS',
+    'SHEET_NAME_DATOS',
+)
 SHEET_GID_FECHA_CORTE = _get_sheet_gid(
-    434275536,
+    DEFAULT_SHEET_GID_FECHA_CORTE,
     'SHEET_GID_FECHA_CORTE',
     'SHEET_GID_FECHA',
     'SHEET_NAME_FECHA',
