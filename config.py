@@ -16,7 +16,16 @@ LEGACY_SHEET_GIDS = {
 
 
 def _get_sheet_gid(default_gid: int, *env_vars: str) -> int:
-    """Obtiene un GID desde variables nuevas o legacy."""
+    """
+    Obtiene un GID desde variables de entorno nuevas o legacy.
+
+    Args:
+        default_gid: GID usado como respaldo si no hay configuración válida.
+        env_vars: Variables de entorno a revisar en orden de prioridad.
+
+    Returns:
+        El GID configurado o el valor por defecto si no existe o es inválido.
+    """
     raw_value = None
 
     for env_var in env_vars:

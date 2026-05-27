@@ -9,7 +9,7 @@ from config import SHEET_GID_DATOS, SHEET_GID_FECHA_CORTE, SHEET_ID
 
 def gsheet_csv_url(sheet_id: str, gid: int) -> str:
     """Genera URL para leer Google Sheet como CSV usando GID."""
-    return f"https://docs.google.com/spreadsheets/d/{sheet_id}/export?format=csv&gid={int(gid)}"
+    return f"https://docs.google.com/spreadsheets/d/{sheet_id}/export?format=csv&gid={gid}"
 
 
 @st.cache_data(ttl=300, show_spinner=False)
