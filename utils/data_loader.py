@@ -35,13 +35,13 @@ def load_cutoff_date(sheet_id: str = SHEET_ID,
         ts = pd.to_datetime(raw, dayfirst=True, errors='coerce')
         
         if pd.isna(ts):
-            st.warning(f"⚠️ Fecha inválida en hoja GID {gid}: '{raw}'. Usando fecha actual.")
+            st.warning(f"⚠️ Fecha inválida en hoja con GID {gid}: '{raw}'. Usando fecha actual.")
             ts = pd.Timestamp.today().normalize()
         
         return pd.Timestamp(ts.date())
     
     except Exception as e:
-        st.error(f"❌ Error cargando fecha de corte desde hoja GID {gid}: {e}")
+        st.error(f"❌ Error cargando fecha de corte desde hoja con GID {gid}: {e}")
         return pd.Timestamp.today().normalize()
 
 
@@ -70,5 +70,5 @@ def load_data(sheet_id: str = SHEET_ID,
         return df
     
     except Exception as e:
-        st.error(f"❌ Error cargando datos desde hoja GID {gid}: {e}")
+        st.error(f"❌ Error cargando datos desde hoja con GID {gid}: {e}")
         st.stop()

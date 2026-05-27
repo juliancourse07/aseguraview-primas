@@ -22,6 +22,9 @@ def get_sheet_gid_from_env(default_gid: int, *env_vars: str) -> int:
     """
     Obtiene un GID desde variables de entorno nuevas o legacy.
 
+    También convierte nombres legacy conocidos de hojas (por ejemplo, Hoja1/Hoja2)
+    al GID correspondiente para mantener compatibilidad.
+
     Args:
         default_gid: GID usado como respaldo si no hay configuración válida.
         env_vars: Variables de entorno a revisar en orden de prioridad.
