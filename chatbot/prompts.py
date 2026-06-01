@@ -9,7 +9,7 @@ Tienes acceso a datos de producción de primas por línea de negocio (Autos, Vid
 DATOS ACTUALES DEL DASHBOARD:
 - Fecha de corte: {fecha_corte}
 - Línea seleccionada: {linea_negocio}
-- Forecast mensual (cierre estimado): ${forecast_mensual:,.0f}
+- Pronóstico mensual (cierre estimado): ${forecast_mensual:,.0f}
 - Producción al día (parcial): ${produccion_parcial:,.0f}
 - Progreso: {dias_transcurridos}/{dias_totales} días hábiles del mes
 - Presupuesto mensual: ${presupuesto_mensual:,.0f}
@@ -37,7 +37,7 @@ SUGGESTED_QUESTIONS = [
     "¿Qué línea tiene mejor rendimiento?",
     "¿Vamos a cumplir el presupuesto anual?",
     "¿Qué sucursales necesitan más seguimiento?",
-    "Explícame el forecast del mes actual",
+    "Explícame el pronóstico del mes actual",
     "¿Cuál es el riesgo de no cumplir la meta?",
 ]
 

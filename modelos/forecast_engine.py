@@ -76,9 +76,9 @@ class ForecastEngine:
         Calcula nowcast dinámico para el mes actual.
 
         Toma la producción parcial acumulada hasta fecha_corte y proyecta
-        los días hábiles restantes usando la proporción del forecast original.
+        los días hábiles restantes usando la proporción del pronóstico original.
 
-        Fórmula: nowcast = prod_parcial + forecast_completo * (días_restantes / días_totales)
+        Fórmula: nowcast = prod_parcial + pronostico_completo * (días_restantes / días_totales)
 
         Args:
             prod_parcial: Producción real acumulada hasta fecha_corte
@@ -103,7 +103,7 @@ class ForecastEngine:
 
         Returns:
             Tuple de (hist_df, forecast_df, smape_validation, accuracy_df) donde
-            accuracy_df contiene las predicciones históricas rolling vs real.
+            accuracy_df contiene los pronósticos históricos rolling vs real.
         """
         if steps < 1:
             steps = 1
@@ -113,7 +113,7 @@ class ForecastEngine:
         if ts.empty:
             empty_hist = pd.DataFrame(columns=["FECHA", "Mensual", "ACUM"])
             empty_fc = pd.DataFrame(columns=[
-                "FECHA", "Forecast_mensual", "Forecast_acum", "IC_lo", "IC_hi"
+                "FECHA", "Pronostico_mensual", "Pronostico_acum", "IC_lo", "IC_hi"
             ])
             empty_acc = pd.DataFrame(columns=["FECHA", "Real", "Forecast_hist"])
             return empty_hist, empty_fc, np.nan, empty_acc
@@ -207,8 +207,8 @@ class ForecastEngine:
         
         forecast_df = pd.DataFrame({
             "FECHA": future_dates,
-            "Forecast_mensual": mean_forecast.values.clip(min=0),
-            "Forecast_acum": forecast_acum.values.clip(min=0),
+            "Pronostico_mensual": mean_forecast.values.clip(min=0),
+            "Pronostico_acum": forecast_acum.values.clip(min=0),
             "IC_lo": conf_int.iloc[:, 0].values.clip(min=0),
             "IC_hi": conf_int.iloc[:, 1].values.clip(min=0)
         })

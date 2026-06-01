@@ -8,7 +8,7 @@ import pandas as pd
 
 def render_sidebar(df: pd.DataFrame, fecha_corte: pd.Timestamp) -> dict:
     """
-    Renderiza sidebar con filtros: Línea+, Código, Sucursal y ajustes de forecast.
+    Renderiza sidebar con filtros: Línea+, Código, Sucursal y ajustes de pronóstico.
     """
     st.sidebar.header("🔍 Filtros")
 
@@ -58,7 +58,7 @@ def render_sidebar(df: pd.DataFrame, fecha_corte: pd.Timestamp) -> dict:
     )
 
     st.sidebar.markdown("---")
-    st.sidebar.markdown("#### ⚙️ Ajustes de Forecast")
+    st.sidebar.markdown("#### ⚙️ Ajustes de Pronóstico")
 
     ajuste_pct = st.sidebar.slider(
         "Ajuste conservador (%)",
