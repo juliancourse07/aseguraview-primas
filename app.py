@@ -122,8 +122,8 @@ def _build_deficit_heatmap_html(
         '<div class="heatmap-shell">',
         (
             '<div class="heatmap-banner">'
-            f'<div class="heatmap-title">🔥 Déficit vs Meta — {html.escape(vista_mes)} | {html.escape(periodo_actual.strftime("%m/%Y"))} (Proyectado(-)Forecast)</div>'
-            '<div class="heatmap-legend">🔴 Rojo intenso = valores positivos (Deficit vs forecast) | ⬜ Crema = cero o faltante</div>'
+            f'<div class="heatmap-title">🔥 Déficit vs Meta — {html.escape(vista_mes)} | {html.escape(periodo_actual.strftime("%m/%Y"))} (Proyectado(-)Pronóstico)</div>'
+            '<div class="heatmap-legend">🔴 Rojo intenso = valores positivos (Déficit vs pronóstico) | ⬜ Crema = cero o faltante</div>'
             '</div>'
         ),
         f'<div class="heatmap-grid" style="{grid_style}">',
@@ -165,7 +165,7 @@ def _build_deficit_heatmap_html(
 
     html_parts.extend([
         '</div>',
-        '<div class="heatmap-note">⚠️ La métrica es Proyectado(-)Forecast: los valores positivos tienen una animación suave como señal de alerta visual frente al riesgo de deficit frente al forecast.</div>',
+        '<div class="heatmap-note">⚠️ La métrica es Proyectado(-)Pronóstico: los valores positivos tienen una animación suave como señal de alerta visual frente al riesgo de déficit frente al pronóstico.</div>',
         '</div>',
     ])
     return ''.join(html_parts)
@@ -194,10 +194,10 @@ def load_and_process_data():
 
 @st.cache_data(ttl=3600)
 def nowcast_cached(prod_parcial: float, fecha_corte: pd.Timestamp,
-                   forecast_completo: float) -> float:
+                   pronostico_completo: float) -> float:
     """Calcula nowcast en caché - se actualiza cada hora (TTL 3600s).
 
-    Fórmula: prod_parcial + forecast_completo × (días_restantes / días_totales)
+    Fórmula: prod_parcial + pronostico_completo × (días_restantes / días_totales)
     """
     from utils.date_utils import business_days_left, get_month_range
     primer_dia, ultimo_dia = get_month_range(fecha_corte.year, fecha_corte.month)
@@ -206,13 +206,13 @@ def nowcast_cached(prod_parcial: float, fecha_corte: pd.Timestamp,
     if dias_totales <= 0:
         return prod_parcial
     proporcion_restante = dias_restantes / dias_totales
-    return prod_parcial + forecast_completo * proporcion_restante
+    return prod_parcial + pronostico_completo * proporcion_restante
 
 @st.cache_data(ttl=3600)
 def compute_line_forecast(serie_data: tuple, conservative_factor: float,
                           ref_year: int, fecha_corte_str: str,
                           steps: int = 1) -> dict:
-    """Calcula forecast para una línea específica (cacheado).
+    """Calcula pronóstico para una línea específica (cacheado).
 
     Args:
         serie_data: tuple de (fechas_iso, valores) para permitir hash
@@ -224,7 +224,7 @@ def compute_line_forecast(serie_data: tuple, conservative_factor: float,
     Returns:
         dict con las claves:
             fc_fechas (list[str]): fechas ISO del pronóstico
-            fc_valores (list[float]): valores de Forecast_mensual
+            fc_valores (list[float]): valores de Pronostico_mensual
             fc_ic_hi (list[float]): límite superior IC 95% (vacío si no disponible)
             fc_ic_lo (list[float]): límite inferior IC 95% (vacío si no disponible)
             is_partial (bool): True si el mes actual es parcial
@@ -244,7 +244,7 @@ def compute_line_forecast(serie_data: tuple, conservative_factor: float,
                 'is_partial': is_partial, 'cur_month_str': None}
     return {
         'fc_fechas': [str(d) for d in fc_df['FECHA']],
-        'fc_valores': list(fc_df['Forecast_mensual']),
+        'fc_valores': list(fc_df['Pronostico_mensual']),
         'fc_ic_hi': list(fc_df['IC_hi']) if 'IC_hi' in fc_df.columns else [],
         'fc_ic_lo': list(fc_df['IC_lo']) if 'IC_lo' in fc_df.columns else [],
         'is_partial': is_partial,
@@ -327,7 +327,7 @@ def _compute_single_line_detailed_forecast(
 
     forecast_df = pd.DataFrame({
         'FECHA': pd.to_datetime(fc_result['fc_fechas']),
-        'Forecast_mensual': fc_result['fc_valores'],
+        'Pronostico_mensual': fc_result['fc_valores'],
         'IC_lo': fc_result['fc_ic_lo'] if fc_result['fc_ic_lo'] else fc_result['fc_valores'],
         'IC_hi': fc_result['fc_ic_hi'] if fc_result['fc_ic_hi'] else fc_result['fc_valores'],
     })
@@ -336,8 +336,8 @@ def _compute_single_line_detailed_forecast(
         return forecast_df
 
     factor = _line_adjustment_factor(linea)
-    forecast_df[['Forecast_mensual', 'IC_lo', 'IC_hi']] = (
-        forecast_df[['Forecast_mensual', 'IC_lo', 'IC_hi']] * factor
+    forecast_df[['Pronostico_mensual', 'IC_lo', 'IC_hi']] = (
+        forecast_df[['Pronostico_mensual', 'IC_lo', 'IC_hi']] * factor
     )
 
     current_month = pd.Timestamp(year=fecha_corte.year, month=fecha_corte.month, day=1)
@@ -347,10 +347,10 @@ def _compute_single_line_detailed_forecast(
         and forecast_df.iloc[0]['FECHA'] == current_month
     ):
         prod_mes_actual = df_linea[df_linea['FECHA'] == current_month]['IMP_PRIMA'].sum()
-        forecast_full = float(forecast_df.iloc[0]['Forecast_mensual'])
+        forecast_full = float(forecast_df.iloc[0]['Pronostico_mensual'])
         nowcast_value = nowcast_cached(prod_mes_actual, fecha_corte, forecast_full)
         delta = nowcast_value - forecast_full
-        forecast_df.loc[forecast_df.index[0], 'Forecast_mensual'] = nowcast_value
+        forecast_df.loc[forecast_df.index[0], 'Pronostico_mensual'] = nowcast_value
         forecast_df.loc[forecast_df.index[0], 'IC_lo'] = max(
             0.0, float(forecast_df.loc[forecast_df.index[0], 'IC_lo']) + delta
         )
@@ -359,8 +359,8 @@ def _compute_single_line_detailed_forecast(
             float(forecast_df.loc[forecast_df.index[0], 'IC_hi']) + delta,
         )
 
-    forecast_df[['Forecast_mensual', 'IC_lo', 'IC_hi']] = (
-        forecast_df[['Forecast_mensual', 'IC_lo', 'IC_hi']].clip(lower=0.0)
+    forecast_df[['Pronostico_mensual', 'IC_lo', 'IC_hi']] = (
+        forecast_df[['Pronostico_mensual', 'IC_lo', 'IC_hi']].clip(lower=0.0)
     )
     forecast_df['IC_hi'] = forecast_df[['IC_lo', 'IC_hi']].max(axis=1)
     return forecast_df.sort_values('FECHA')
@@ -409,7 +409,7 @@ def build_detailed_forecast(
 
         forecast_df = pd.concat(forecast_frames, ignore_index=True)
         forecast_df = (
-            forecast_df.groupby('FECHA', as_index=False)[['Forecast_mensual', 'IC_lo', 'IC_hi']].sum()
+            forecast_df.groupby('FECHA', as_index=False)[['Pronostico_mensual', 'IC_lo', 'IC_hi']].sum()
         )
     else:
         df_linea = df_scope[df_scope['LINEA_PLUS'] == linea_seleccionada]
@@ -421,7 +421,7 @@ def build_detailed_forecast(
         return forecast_df
 
     forecast_df = forecast_df.sort_values('FECHA').copy()
-    forecast_df['Forecast_acumulado'] = forecast_df['Forecast_mensual'].cumsum()
+    forecast_df['Pronostico_acumulado'] = forecast_df['Pronostico_mensual'].cumsum()
     forecast_df['IC_acum_lo'] = forecast_df['IC_lo'].cumsum()
     forecast_df['IC_acum_hi'] = forecast_df['IC_hi'].cumsum()
     return forecast_df
@@ -481,13 +481,13 @@ def render_detailed_forecast_charts(
     ))
     fig_monthly.add_trace(go.Scatter(
         x=forecast_df['FECHA'],
-        y=forecast_df['Forecast_mensual'],
+        y=forecast_df['Pronostico_mensual'],
         mode='lines+markers+text',
         line=dict(color='#38bdf8', width=3),
         marker=dict(size=8, symbol='circle'),
-        text=forecast_df['Forecast_mensual'].apply(fmt_cop_short),
+        text=forecast_df['Pronostico_mensual'].apply(fmt_cop_short),
         textposition='top center',
-        name='Forecast',
+        name='Pronóstico',
         hovertemplate='$%{y:,.0f}<extra></extra>',
     ))
 
@@ -512,13 +512,13 @@ def render_detailed_forecast_charts(
     ))
     fig_accum.add_trace(go.Scatter(
         x=forecast_df['FECHA'],
-        y=forecast_df['Forecast_acumulado'],
+        y=forecast_df['Pronostico_acumulado'],
         mode='lines+markers+text',
         line=dict(color='#38bdf8', width=3),
         marker=dict(size=8, symbol='circle'),
-        text=forecast_df['Forecast_acumulado'].apply(fmt_cop_short),
+        text=forecast_df['Pronostico_acumulado'].apply(fmt_cop_short),
         textposition='top center',
-        name='Forecast Acumulado',
+        name='Pronóstico Acumulado',
         hovertemplate='$%{y:,.0f}<extra></extra>',
     ))
 
@@ -568,10 +568,10 @@ def render_detailed_forecast_table(forecast_df: pd.DataFrame) -> None:
 
     summary_df = pd.DataFrame({
         'Mes': forecast_df['FECHA'].dt.strftime('%b-%Y'),
-        'Forecast Mensual': forecast_df['Forecast_mensual'],
+        'Pronóstico Mensual': forecast_df['Pronostico_mensual'],
         'IC Mín': forecast_df['IC_lo'],
         'IC Máx': forecast_df['IC_hi'],
-        'Forecast Acumulado': forecast_df['Forecast_acumulado'],
+        'Pronóstico Acumulado': forecast_df['Pronostico_acumulado'],
         'IC Acum Mín': forecast_df['IC_acum_lo'],
         'IC Acum Máx': forecast_df['IC_acum_hi'],
     })
@@ -580,10 +580,10 @@ def render_detailed_forecast_table(forecast_df: pd.DataFrame) -> None:
 
     total_row = {
         'Mes': 'TOTAL',
-        'Forecast Mensual': summary_df['Forecast Mensual'].sum(),
+        'Pronóstico Mensual': summary_df['Pronóstico Mensual'].sum(),
         'IC Mín': summary_df['IC Mín'].sum(),
         'IC Máx': summary_df['IC Máx'].sum(),
-        'Forecast Acumulado': summary_df['Forecast Acumulado'].iloc[-1],
+        'Pronóstico Acumulado': summary_df['Pronóstico Acumulado'].iloc[-1],
         'IC Acum Mín': summary_df['IC Acum Mín'].iloc[-1],
         'IC Acum Máx': summary_df['IC Acum Máx'].iloc[-1],
     }
@@ -591,8 +591,8 @@ def render_detailed_forecast_table(forecast_df: pd.DataFrame) -> None:
 
     display_df = summary_df.copy()
     for col in [
-        'Forecast Mensual', 'IC Mín', 'IC Máx',
-        'Forecast Acumulado', 'IC Acum Mín', 'IC Acum Máx',
+        'Pronóstico Mensual', 'IC Mín', 'IC Máx',
+        'Pronóstico Acumulado', 'IC Acum Mín', 'IC Acum Máx',
     ]:
         display_df[col] = display_df[col].apply(fmt_cop)
 
@@ -713,7 +713,7 @@ with tabs[1]:
     # Filtrar datos hasta el periodo actual (usar df_filtered para respetar filtros de Sucursal/Código)
     df_periodo = df_filtered[df_filtered['FECHA'] <= periodo_actual].copy()
     
-    # Generar forecast consolidado
+    # Generar pronóstico consolidado
     serie_prima = df_filtered.groupby('FECHA')['IMP_PRIMA'].sum().sort_index()
     engine = ForecastEngine(conservative_factor=filters['conservative_factor'])
     ref_year = filters['anio_analisis']
@@ -745,7 +745,7 @@ with tabs[1]:
         actual_col = f"Actual {ref_year} Acumulado Mes"
 
     faltante_col = "Faltante proyectado"
-    proyectado_vs_forecast_col = "Proyectado(-)Forecast"
+    proyectado_vs_pronostico_col = "Proyectado(-)Pronóstico"
     compensacion_col = "Compensación de faltante"
     req_dia_fc_col = "Req x día Fc (días calendario)"
     req_dia_pres_col = "Req x día Pres (días calendario)"
@@ -775,33 +775,33 @@ with tabs[1]:
                 str(fecha_corte.date()),
                 steps=1
             )
-            forecast_mes_full = fc_result['fc_valores'][0] if fc_result['fc_valores'] else 0.0
+            pronostico_mes_full = fc_result['fc_valores'][0] if fc_result['fc_valores'] else 0.0
             is_partial_temp = fc_result['is_partial']
 
             if linea == "FIANZAS":
-                forecast_mes_full = forecast_mes_full * 0.975
+                pronostico_mes_full = pronostico_mes_full * 0.975
             elif linea == "SOAT":
                 pass  # Sin ajuste
             else:
-                forecast_mes_full = forecast_mes_full * 0.995
+                pronostico_mes_full = pronostico_mes_full * 0.995
 
-            # Nowcast: ajuste dinámico usando producción parcial + proporción restante del forecast
+            # Nowcast: ajuste dinámico usando producción parcial + proporción restante del pronóstico
             if is_partial_temp:
-                forecast_mes = nowcast_cached(prod_mes_actual, fecha_corte, forecast_mes_full)
+                pronostico_mes = nowcast_cached(prod_mes_actual, fecha_corte, pronostico_mes_full)
             else:
-                forecast_mes = forecast_mes_full
+                pronostico_mes = pronostico_mes_full
 
             faltante_mes = presup_mes - prod_mes_actual
             pct_ejec_mes = (prod_mes_actual / presup_mes * 100) if presup_mes > 0 else 0.0
-            forecast_ejec_pct = (forecast_mes / presup_mes * 100) if presup_mes > 0 else 0.0
-            proyectado_vs_forecast = presup_mes - forecast_mes
-            compensacion_faltante = (proyectado_vs_forecast / presup_mes * 100) if presup_mes > 0 else 0.0
-            crec_fc_pct = ((forecast_mes / prod_mes_previo) - 1) * 100 if prod_mes_previo > 0 else 0.0
+            pronostico_ejec_pct = (pronostico_mes / presup_mes * 100) if presup_mes > 0 else 0.0
+            proyectado_vs_pronostico = presup_mes - pronostico_mes
+            compensacion_faltante = (proyectado_vs_pronostico / presup_mes * 100) if presup_mes > 0 else 0.0
+            crec_fc_pct = ((pronostico_mes / prod_mes_previo) - 1) * 100 if prod_mes_previo > 0 else 0.0
 
             ultimo_dia_mes = periodo_actual + pd.offsets.MonthEnd(0)
             fecha_corte_dia = pd.Timestamp(fecha_corte).normalize()
             dias_restantes = max((ultimo_dia_mes.normalize() - fecha_corte_dia).days + 1, 0)
-            req_dia_fc = (forecast_mes - prod_mes_actual) / dias_restantes if dias_restantes > 0 else 0.0
+            req_dia_fc = (pronostico_mes - prod_mes_actual) / dias_restantes if dias_restantes > 0 else 0.0
             req_dia_pres = (presup_mes - prod_mes_actual) / dias_restantes if dias_restantes > 0 else 0.0
 
             resumen_lineas.append({
@@ -811,10 +811,10 @@ with tabs[1]:
                 'Proyectado': presup_mes,
                 faltante_col: faltante_mes,
                 '% Ejec.': pct_ejec_mes,
-                'Forecast (mes)': forecast_mes,
+                'Pronóstico (mes)': pronostico_mes,
                 'Crec. Fc (%)': crec_fc_pct,
-                'Forecast ejecución': forecast_ejec_pct,
-                proyectado_vs_forecast_col: proyectado_vs_forecast,
+                'Pronóstico ejecución': pronostico_ejec_pct,
+                proyectado_vs_pronostico_col: proyectado_vs_pronostico,
                 compensacion_col: compensacion_faltante,
                 req_dia_fc_col: req_dia_fc,
                 req_dia_pres_col: req_dia_pres
@@ -889,34 +889,34 @@ with tabs[1]:
                 is_partial_temp = fc_result_anio['is_partial']
 
                 if is_partial_temp and fecha_corte.month in meses_quarter and fc_valores_list:
-                    forecast_mes_full_anio = fc_valores_list[0]
-                    nowcast_mes = nowcast_cached(prod_parcial_mes, fecha_corte, forecast_mes_full_anio)
-                    forecast_restante = sum(
+                    pronostico_mes_full_anio = fc_valores_list[0]
+                    nowcast_mes = nowcast_cached(prod_parcial_mes, fecha_corte, pronostico_mes_full_anio)
+                    pronostico_restante = sum(
                         v for d, v in zip(fc_fechas_ts[1:], fc_valores_list[1:])
                         if d.month in meses_quarter
                     )
                 else:
                     nowcast_mes = prod_parcial_mes
-                    forecast_restante = sum(
+                    pronostico_restante = sum(
                         v for d, v in zip(fc_fechas_ts, fc_valores_list)
                         if d.month in meses_quarter
                     )
             else:
                 nowcast_mes = prod_parcial_mes
-                forecast_restante = 0.0
+                pronostico_restante = 0.0
                 is_partial_temp = False
 
-            cierre_estimado = prod_ytd_actual + nowcast_mes + forecast_restante
+            cierre_estimado = prod_ytd_actual + nowcast_mes + pronostico_restante
             faltante_anual = presup_anual - prod_ytd_actual
             pct_ejec_anual = (
                 (prod_ytd_actual + prod_parcial_mes) / presup_anual * 100
             ) if presup_anual > 0 else 0.0
             if presup_anual <= 0:
-                forecast_ejec_pct = 0.0
+                pronostico_ejec_pct = 0.0
             else:
-                forecast_ejec_pct = (cierre_estimado / presup_anual) * 100
-            proyectado_vs_forecast = presup_anual - cierre_estimado
-            compensacion_faltante = (proyectado_vs_forecast / presup_anual * 100) if presup_anual > 0 else 0.0
+                pronostico_ejec_pct = (cierre_estimado / presup_anual) * 100
+            proyectado_vs_pronostico = presup_anual - cierre_estimado
+            compensacion_faltante = (proyectado_vs_pronostico / presup_anual * 100) if presup_anual > 0 else 0.0
             crec_fc_pct = ((cierre_estimado / prod_anio_previo) - 1) * 100 if prod_anio_previo > 0 else 0.0
 
             resumen_lineas.append({
@@ -926,10 +926,10 @@ with tabs[1]:
                 'Proyectado (anual)': presup_anual,
                 faltante_col: faltante_anual,
                 '% Ejec.': pct_ejec_anual,
-                'Forecast (cierre)': cierre_estimado,
+                'Pronóstico (cierre)': cierre_estimado,
                 'Crec. Fc (%)': crec_fc_pct,
-                'Forecast ejecución': forecast_ejec_pct,
-                proyectado_vs_forecast_col: proyectado_vs_forecast,
+                'Pronóstico ejecución': pronostico_ejec_pct,
+                proyectado_vs_pronostico_col: proyectado_vs_pronostico,
                 compensacion_col: compensacion_faltante
             })
 
@@ -961,15 +961,15 @@ with tabs[1]:
                 str(fecha_corte.date()),
                 steps=1
             )
-            forecast_mes_full = fc_result_acum['fc_valores'][0] if fc_result_acum['fc_valores'] else 0.0
+            pronostico_mes_full = fc_result_acum['fc_valores'][0] if fc_result_acum['fc_valores'] else 0.0
             is_partial_temp = fc_result_acum['is_partial']
 
             if linea == "FIANZAS":
-                forecast_mes_full = forecast_mes_full * 0.975
+                pronostico_mes_full = pronostico_mes_full * 0.975
             elif linea == "SOAT":
                 pass  # Sin ajuste
             else:
-                forecast_mes_full = forecast_mes_full * 0.995
+                pronostico_mes_full = pronostico_mes_full * 0.995
 
             prod_meses_cerrados= df_linea[
                 (df_linea['FECHA'].dt.year == ref_year) &
@@ -980,16 +980,16 @@ with tabs[1]:
             # Nowcast para el mes actual parcial
             prod_parcial_mes = df_linea[df_linea['FECHA'] == periodo_actual]['IMP_PRIMA'].sum()
             if is_partial_temp and fecha_corte.month in meses_quarter:
-                forecast_mes_actual = nowcast_cached(prod_parcial_mes, fecha_corte, forecast_mes_full)
+                pronostico_mes_actual = nowcast_cached(prod_parcial_mes, fecha_corte, pronostico_mes_full)
             else:
-                forecast_mes_actual = forecast_mes_full if fecha_corte.month in meses_quarter else 0.0
+                pronostico_mes_actual = pronostico_mes_full if fecha_corte.month in meses_quarter else 0.0
 
-            ytd_con_forecast = prod_meses_cerrados + forecast_mes_actual
+            ytd_con_forecast = prod_meses_cerrados + pronostico_mes_actual
             faltante_ytd = presup_ytd - ytd_con_forecast
             pct_ejec_ytd = (prod_ytd_actual / presup_ytd * 100) if presup_ytd > 0 else 0.0
-            forecast_ejec_pct = (ytd_con_forecast / presup_ytd * 100) if presup_ytd > 0 else 0.0
-            proyectado_vs_forecast = presup_ytd - ytd_con_forecast
-            compensacion_faltante = (proyectado_vs_forecast / presup_ytd * 100) if presup_ytd > 0 else 0.0
+            pronostico_ejec_pct = (ytd_con_forecast / presup_ytd * 100) if presup_ytd > 0 else 0.0
+            proyectado_vs_pronostico = presup_ytd - ytd_con_forecast
+            compensacion_faltante = (proyectado_vs_pronostico / presup_ytd * 100) if presup_ytd > 0 else 0.0
             crec_fc_pct = ((ytd_con_forecast / prod_ytd_previo) - 1) * 100 if prod_ytd_previo > 0 else 0.0
              
             resumen_lineas.append({
@@ -999,10 +999,10 @@ with tabs[1]:
                 'Proyectado (YTD)': presup_ytd,
                 faltante_col: faltante_ytd,
                 '% Ejec.': pct_ejec_ytd,
-                'Forecast (YTD + mes)': ytd_con_forecast,
+                'Pronóstico (YTD + mes)': ytd_con_forecast,
                 'Crec. Fc (%)': crec_fc_pct,
-                'Forecast ejecución': forecast_ejec_pct,
-                proyectado_vs_forecast_col: proyectado_vs_forecast,
+                'Pronóstico ejecución': pronostico_ejec_pct,
+                proyectado_vs_pronostico_col: proyectado_vs_pronostico,
                 compensacion_col: compensacion_faltante
             })
     
@@ -1013,13 +1013,13 @@ with tabs[1]:
         st.markdown(f"**Ajuste conservador:** {filters['ajuste_pct']:.1f}%")
         if vista_mes == "Mes":
             proyectado_col = "Proyectado"
-            forecast_col = "Forecast (mes)"
+            pronostico_col = "Pronóstico (mes)"
         elif vista_mes == "Año":
             proyectado_col = "Proyectado (anual)"
-            forecast_col = "Forecast (cierre)"
+            pronostico_col = "Pronóstico (cierre)"
         else:
             proyectado_col = "Proyectado (YTD)"
-            forecast_col = "Forecast (YTD + mes)"
+            pronostico_col = "Pronóstico (YTD + mes)"
         
         # Calcular totales
         totales = {}
@@ -1031,12 +1031,12 @@ with tabs[1]:
             elif '% Ejec' in col or 'Crec. Fc (%)' in col or 'ejecución' in col or col == compensacion_col:
                 if '% Ejec.' == col:
                     totales[col] = (df_resumen[actual_col].sum() / df_resumen[proyectado_col].sum() * 100) if df_resumen[proyectado_col].sum() > 0 else 0.0
-                elif 'Forecast ejecución' == col:
-                    totales[col] = (df_resumen[forecast_col].sum() / df_resumen[proyectado_col].sum() * 100) if df_resumen[proyectado_col].sum() > 0 else 0.0
+                elif 'Pronóstico ejecución' == col:
+                    totales[col] = (df_resumen[pronostico_col].sum() / df_resumen[proyectado_col].sum() * 100) if df_resumen[proyectado_col].sum() > 0 else 0.0
                 elif 'Crec. Fc (%)' == col:
-                    totales[col] = ((df_resumen[forecast_col].sum() / df_resumen[previo_col].sum()) - 1) * 100 if df_resumen[previo_col].sum() > 0 else 0.0
+                    totales[col] = ((df_resumen[pronostico_col].sum() / df_resumen[previo_col].sum()) - 1) * 100 if df_resumen[previo_col].sum() > 0 else 0.0
                 elif compensacion_col == col:
-                    totales[col] = (df_resumen[proyectado_vs_forecast_col].sum() / df_resumen[proyectado_col].sum() * 100) if df_resumen[proyectado_col].sum() > 0 else 0.0
+                    totales[col] = (df_resumen[proyectado_vs_pronostico_col].sum() / df_resumen[proyectado_col].sum() * 100) if df_resumen[proyectado_col].sum() > 0 else 0.0
             else:
                 totales[col] = df_resumen[col].sum()
         
@@ -1095,7 +1095,7 @@ with tabs[1]:
                             style += "color:#16a34a;" if faltante_val <= 0 else "color:#ef4444;"
                         except:
                             pass
-                    elif col in [proyectado_vs_forecast_col, compensacion_col]:
+                    elif col in [proyectado_vs_pronostico_col, compensacion_col]:
                         try:
                             brecha_val = df_resumen.iloc[idx][col]
                             style += "color:#ef4444;font-weight:700;" if brecha_val > 0 else "color:#16a34a;font-weight:700;"
@@ -1119,7 +1119,7 @@ with tabs[1]:
             else:
                 # ── Obtener déficit por línea desde df_resumen (excluir fila TOTAL) ──
                 df_res_sin_total = df_resumen.iloc[:-1].copy()
-                deficit_por_linea = dict(zip(df_res_sin_total['LINEA_PLUS'], df_res_sin_total[proyectado_vs_forecast_col]))
+                deficit_por_linea = dict(zip(df_res_sin_total['LINEA_PLUS'], df_res_sin_total[proyectado_vs_pronostico_col]))
 
                 # ── Obtener PRESUPUESTO por sucursal×linea según vista activa ──
                 if vista_mes == "Mes":
@@ -1188,7 +1188,7 @@ with tabs[1]:
                             periodo_actual=periodo_actual,
                         )
                         st.markdown(heatmap_html, unsafe_allow_html=True)
-                        st.caption("🔴 Rojo escarlata = valores positivos de Proyectado(-)Forecast (superávit frente al forecast) | ⬜ Blanco crema = cero o faltante | Los totales por línea se muestran antes del detalle por sucursal")
+                        st.caption("🔴 Rojo escarlata = valores positivos de Proyectado(-)Pronóstico (superávit frente al pronóstico) | ⬜ Blanco crema = cero o faltante | Los totales por línea se muestran antes del detalle por sucursal")
 
         # Exportación unificada
         with BytesIO() as buf:
@@ -1216,7 +1216,7 @@ with tabs[1]:
     st.markdown("### 📈 Pronóstico Consolidado")
     
     prod_total = float(serie_clean.sum())
-    proy_total = float(fc_df['Forecast_mensual'].sum()) if not fc_df.empty else 0.0
+    proy_total = float(fc_df['Pronostico_mensual'].sum()) if not fc_df.empty else 0.0
     
     if filters['linea_plus'] == "FIANZAS":
         proy_total = proy_total * 0.975
@@ -1237,10 +1237,11 @@ with tabs[1]:
         fc_display['FECHA'] = fc_display['FECHA'].dt.strftime('%b-%Y')
         
         if filters['linea_plus'] == "FIANZAS":
-            fc_display['Forecast_mensual'] = fc_display['Forecast_mensual'] * 0.975
+            fc_display['Pronostico_mensual'] = fc_display['Pronostico_mensual'] * 0.975
         
-        fc_display['Forecast_mensual'] = fc_display['Forecast_mensual'].apply(fmt_cop)
-        st.dataframe(fc_display[['FECHA', 'Forecast_mensual']], use_container_width=True, hide_index=True)
+        fc_display['Pronostico_mensual'] = fc_display['Pronostico_mensual'].apply(fmt_cop)
+        fc_display = fc_display.rename(columns={'Pronostico_mensual': 'Pronóstico Mensual'})
+        st.dataframe(fc_display[['FECHA', 'Pronóstico Mensual']], use_container_width=True, hide_index=True)
     
     st.info(f"📊 SMAPE validación: {smape:.2f}%")
 
@@ -1270,21 +1271,21 @@ with tabs[1]:
         # Aplicar ajustes específicos por línea (NO MODIFICAR ESTA LÓGICA)
         if linea_seleccionada == "FIANZAS":
             fc_sel = fc_sel.copy()
-            fc_sel['Forecast_mensual'] = fc_sel['Forecast_mensual'] * 0.975
+            fc_sel['Pronostico_mensual'] = fc_sel['Pronostico_mensual'] * 0.975
             fc_sel['IC_lo'] = fc_sel['IC_lo'] * 0.975
             fc_sel['IC_hi'] = fc_sel['IC_hi'] * 0.975
         elif linea_seleccionada == "SOAT":
             pass  # Sin ajuste
         else:
             fc_sel = fc_sel.copy()
-            fc_sel['Forecast_mensual'] = fc_sel['Forecast_mensual'] * 0.995
+            fc_sel['Pronostico_mensual'] = fc_sel['Pronostico_mensual'] * 0.995
             fc_sel['IC_lo'] = fc_sel['IC_lo'] * 0.995
             fc_sel['IC_hi'] = fc_sel['IC_hi'] * 0.995
 
         # Métricas en columnas
         col1, col2, col3, col4 = st.columns(4)
         prod_ytd = float(serie_clean_sel.sum())
-        proy_restante = float(fc_sel['Forecast_mensual'].sum())
+        proy_restante = float(fc_sel['Pronostico_mensual'].sum())
         cierre_est_linea = prod_ytd + proy_restante
 
         col1.metric("Producción YTD", fmt_cop(prod_ytd))
@@ -1303,11 +1304,12 @@ with tabs[1]:
         with st.expander("📋 Ver detalle mensual del pronóstico"):
             fc_display_sel = fc_sel.copy()
             fc_display_sel['FECHA'] = fc_display_sel['FECHA'].dt.strftime('%b-%Y')
-            fc_display_sel['Forecast_mensual'] = fc_display_sel['Forecast_mensual'].apply(fmt_cop)
+            fc_display_sel['Pronostico_mensual'] = fc_display_sel['Pronostico_mensual'].apply(fmt_cop)
             fc_display_sel['IC_lo'] = fc_display_sel['IC_lo'].apply(fmt_cop)
             fc_display_sel['IC_hi'] = fc_display_sel['IC_hi'].apply(fmt_cop)
+            fc_display_sel = fc_display_sel.rename(columns={'Pronostico_mensual': 'Pronóstico Mensual'})
             st.dataframe(
-                fc_display_sel[['FECHA', 'Forecast_mensual', 'IC_lo', 'IC_hi']],
+                fc_display_sel[['FECHA', 'Pronóstico Mensual', 'IC_lo', 'IC_hi']],
                 use_container_width=True,
                 hide_index=True
             )
@@ -1351,7 +1353,7 @@ with tabs[1]:
     - ✅ **Detección temprana**: Identifica problemas desde los primeros días del mes
     - ✅ **Comparación justa**: Todas las sucursales se miden con la misma métrica normalizada
     - ✅ **Acción preventiva**: Permite intervenir antes de que termine el mes
-    - ✅ **Forecast integrado**: Combina producción real + proyección SARIMAX
+    - ✅ **Pronóstico integrado**: Combina producción real + proyección SARIMAX
     
     #### 🔍 Ordenamiento
     
@@ -1387,7 +1389,7 @@ with tabs[1]:
             ritmo_necesario = (presup_mes_suc / dias_totales_mes) * dias_transcurridos_mes if dias_totales_mes > 0 else 0
             cumplimiento_ritmo = (prod_mes_suc / ritmo_necesario * 100) if ritmo_necesario > 0 else 0
 
-            # Forecast para la sucursal
+            # Pronóstico para la sucursal
             serie_suc = df_suc.groupby('FECHA')['IMP_PRIMA'].sum().sort_index()
             serie_data_suc = (
                 tuple(str(d) for d in serie_suc.index),
@@ -1401,11 +1403,11 @@ with tabs[1]:
                 steps=1
             )
 
-            forecast_suc = fc_suc_result['fc_valores'][0] if fc_suc_result['fc_valores'] else 0.0
+            pronostico_suc = fc_suc_result['fc_valores'][0] if fc_suc_result['fc_valores'] else 0.0
             if fc_suc_result.get('is_partial'):
-                forecast_suc = nowcast_cached(prod_mes_suc, fecha_corte, forecast_suc)
+                pronostico_suc = nowcast_cached(prod_mes_suc, fecha_corte, pronostico_suc)
 
-            forecast_ejec_suc = (forecast_suc / presup_mes_suc * 100) if presup_mes_suc > 0 else 0
+            pronostico_ejec_suc = (pronostico_suc / presup_mes_suc * 100) if presup_mes_suc > 0 else 0
 
             if cumplimiento_ritmo >= _UMBRAL_BUEN_RITMO:
                 indicador = _INDICADOR_BUEN_RITMO
@@ -1423,8 +1425,8 @@ with tabs[1]:
                 'Presupuesto': presup_mes_suc,
                 '% Avance': (prod_mes_suc / presup_mes_suc * 100),
                 'Ritmo (%)': cumplimiento_ritmo,
-                'Forecast': forecast_suc,
-                'Forecast %': forecast_ejec_suc,
+                'Pronóstico': pronostico_suc,
+                'Pronóstico %': pronostico_ejec_suc,
                 'Color': color_barra
             })
 
@@ -1441,14 +1443,14 @@ with tabs[1]:
                 marker=dict(color=df_rend['Color']),
                 text=df_rend['Ritmo (%)'].apply(lambda x: f"{x:.1f}%"),
                 textposition='outside',
-                customdata=df_rend[['Producción', 'Presupuesto', 'Forecast', 'Forecast %']].values,
+                customdata=df_rend[['Producción', 'Presupuesto', 'Pronóstico', 'Pronóstico %']].values,
                 hovertemplate=(
                     '<b>%{y}</b><br>'
                     'Producción: $%{customdata[0]:,.0f}<br>'
                     'Presupuesto: $%{customdata[1]:,.0f}<br>'
                     'Ritmo: %{x:.1f}%<br>'
-                    'Forecast: $%{customdata[2]:,.0f}<br>'
-                    'Forecast Ejec: %{customdata[3]:.1f}%'
+                    'Pronóstico: $%{customdata[2]:,.0f}<br>'
+                    'Pronóstico Ejec.: %{customdata[3]:.1f}%'
                     '<extra></extra>'
                 )
             ))
@@ -1488,7 +1490,7 @@ with tabs[2]:
         with st.expander("Ver calendario visual"):
             st.code(adjuster.get_calendar_visual(2026), language=None)
         
-        st.markdown("#### 📈 Pronóstico FIANZAS Ajustado")
+        st.markdown("#### 📈 Pronóstico de FIANZAS Ajustado")
         
         serie_fianzas = df_fianzas.groupby('FECHA')['IMP_PRIMA'].sum().sort_index()
         
@@ -1502,17 +1504,21 @@ with tabs[2]:
             hist_f, fc_f, _, _ = engine_fianzas.fit_forecast(serie_train_f, steps=12)
             
             if not fc_f.empty:
-                fc_adjusted = adjuster.adjust_forecast(fc_f['Forecast_mensual'], fc_f['FECHA'])
-                fc_f['Forecast_ajustado_garantias'] = fc_adjusted
-                fc_f['Diferencia'] = fc_f['Forecast_ajustado_garantias'] - fc_f['Forecast_mensual']
+                fc_adjusted = adjuster.adjust_forecast(fc_f['Pronostico_mensual'], fc_f['FECHA'])
+                fc_f['Pronostico_ajustado_garantias'] = fc_adjusted
+                fc_f['Diferencia'] = fc_f['Pronostico_ajustado_garantias'] - fc_f['Pronostico_mensual']
             
             fc_display_f = fc_f.copy()
             fc_display_f['FECHA'] = fc_display_f['FECHA'].dt.strftime('%b-%Y')
-            fc_display_f['Forecast_mensual'] = fc_display_f['Forecast_mensual'].apply(fmt_cop)
-            fc_display_f['Forecast_ajustado_garantias'] = fc_display_f['Forecast_ajustado_garantias'].apply(fmt_cop)
+            fc_display_f['Pronostico_mensual'] = fc_display_f['Pronostico_mensual'].apply(fmt_cop)
+            fc_display_f['Pronostico_ajustado_garantias'] = fc_display_f['Pronostico_ajustado_garantias'].apply(fmt_cop)
             fc_display_f['Diferencia'] = fc_display_f['Diferencia'].apply(fmt_cop)
+            fc_display_f = fc_display_f.rename(columns={
+                'Pronostico_mensual': 'Pronóstico Mensual',
+                'Pronostico_ajustado_garantias': 'Pronóstico Ajustado Garantías',
+            })
             
-            st.dataframe(fc_display_f[['FECHA', 'Forecast_mensual', 'Forecast_ajustado_garantias', 'Diferencia']], 
+            st.dataframe(fc_display_f[['FECHA', 'Pronóstico Mensual', 'Pronóstico Ajustado Garantías', 'Diferencia']], 
                         use_container_width=True, hide_index=True)
 
 # ========== TAB 4: PRESUPUESTO 2026 ==========
@@ -1559,5 +1565,3 @@ with tabs[3]:
                 )
             else:
                 st.warning("No se pudo generar presupuesto con los filtros actuales")
-
-

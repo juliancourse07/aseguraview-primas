@@ -63,7 +63,7 @@ groq>=0.4.0
 
 - **Botón flotante** estilo WhatsApp con animación de pulso (esquina inferior derecha)
 - **Panel de chat** que se abre desde el sidebar de Streamlit
-- **Contexto del dashboard**: fecha de corte, línea seleccionada, forecast, presupuesto
+- **Contexto del dashboard**: fecha de corte, línea seleccionada, pronóstico, presupuesto
 - **Preguntas sugeridas** al inicio de la conversación
 - **Historial persistente** en `st.session_state`
 - **Modelo**: Llama 3.1 8B Instant (respuestas en <3 segundos)
@@ -75,7 +75,7 @@ groq>=0.4.0
 - *"¿Qué línea tiene mejor rendimiento?"*
 - *"¿Vamos a cumplir el presupuesto anual?"*
 - *"¿Qué sucursales necesitan más seguimiento?"*
-- *"Explícame el forecast del mes actual"*
+- *"Explícame el pronóstico del mes actual"*
 - *"¿Cuál es el riesgo de no cumplir la meta?"*
 
 ## 🔒 Seguridad

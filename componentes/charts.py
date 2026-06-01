@@ -17,11 +17,11 @@ def render_forecast_chart(hist_df: pd.DataFrame,
 
     Args:
         hist_df: DataFrame con columnas FECHA y Mensual (histórico real).
-        forecast_df: DataFrame con columnas FECHA y Forecast_mensual (pronósticos futuros).
+        forecast_df: DataFrame con columnas FECHA y Pronostico_mensual (pronósticos futuros).
         title: Título del gráfico.
         accuracy_df: DataFrame opcional con columnas FECHA, Real y Forecast_hist.
                      Si se proporciona, se añade una línea de precisión del modelo
-                     mostrando forecast histórico vs real (últimos 6-12 meses validados).
+                     mostrando pronóstico histórico vs real (últimos 6-12 meses validados).
     """
     try:
         import plotly.graph_objects as go
@@ -41,10 +41,10 @@ def render_forecast_chart(hist_df: pd.DataFrame,
             line=dict(color='#38bdf8', width=2)
         ))
 
-    if not forecast_df.empty and 'FECHA' in forecast_df.columns and 'Forecast_mensual' in forecast_df.columns:
+    if not forecast_df.empty and 'FECHA' in forecast_df.columns and 'Pronostico_mensual' in forecast_df.columns:
         fig.add_trace(go.Scatter(
             x=forecast_df['FECHA'],
-            y=forecast_df['Forecast_mensual'],
+            y=forecast_df['Pronostico_mensual'],
             mode='lines+markers',
             name='Pronóstico',
             line=dict(color='#f59e0b', width=2, dash='dash')
@@ -71,7 +71,7 @@ def render_forecast_chart(hist_df: pd.DataFrame,
                 hoverinfo='skip'
             ))
 
-    # ── Línea de precisión histórica (Forecast vs Real) ──────────────────────
+    # ── Línea de precisión histórica (Pronóstico vs Real) ──────────────────────
     if accuracy_df is not None and not accuracy_df.empty:
         required_cols = {'FECHA', 'Real', 'Forecast_hist'}
         if required_cols.issubset(accuracy_df.columns):
@@ -85,21 +85,21 @@ def render_forecast_chart(hist_df: pd.DataFrame,
                 * 100
             ).fillna(0)
 
-            # Línea de forecast histórico validado
+            # Línea de pronóstico histórico validado
             fig.add_trace(go.Scatter(
                 x=acc['FECHA'],
                 y=acc['Forecast_hist'],
                 mode='lines+markers',
-                name='Forecast histórico',
+                name='Pronóstico histórico',
                 line=dict(color='#a78bfa', width=1.5, dash='dot'),
                 marker=dict(size=6, symbol='diamond'),
                 customdata=acc[['Real', 'error_pct']].values,
                 hovertemplate=(
                     'Mes: %{x|%b-%Y}<br>'
-                    'Forecast: %{y:,.0f}<br>'
+                    'Pronóstico: %{y:,.0f}<br>'
                     'Real: %{customdata[0]:,.0f}<br>'
                     'Error: ±%{customdata[1]:.1f}%'
-                    '<extra>Forecast histórico</extra>'
+                    '<extra>Pronóstico histórico</extra>'
                 )
             ))
 
@@ -121,7 +121,7 @@ def render_forecast_chart(hist_df: pd.DataFrame,
                 hovertemplate=(
                     'Mes: %{x|%b-%Y}<br>'
                     'Real: %{y:,.0f}<br>'
-                    'Forecast: %{customdata[0]:,.0f}<br>'
+                    'Pronóstico: %{customdata[0]:,.0f}<br>'
                     'Error: ±%{customdata[1]:.1f}%'
                     '<extra>Real (validación)</extra>'
                 )
