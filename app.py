@@ -195,7 +195,7 @@ def load_and_process_data():
 @st.cache_data(ttl=3600)
 def nowcast_cached(prod_parcial: float, fecha_corte: pd.Timestamp,
                    forecast_completo: float) -> float:
-    """Calcula nowcast cacheado - se actualiza cada hora (TTL 3600s).
+    """Calcula nowcast en caché - se actualiza cada hora (TTL 3600s).
 
     Fórmula: prod_parcial + forecast_completo × (días_restantes / días_totales)
     """
