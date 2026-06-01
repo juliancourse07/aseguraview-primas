@@ -745,7 +745,7 @@ with tabs[1]:
         actual_col = f"Actual {ref_year} Acumulado Mes"
 
     faltante_col = "Faltante proyectado"
-    proyectado_vs_forecast_col = "Proyectado(-)Pronóstico"
+    proyectado_vs_pronostico_col = "Proyectado(-)Pronóstico"
     compensacion_col = "Compensación de faltante"
     req_dia_fc_col = "Req x día Fc (días calendario)"
     req_dia_pres_col = "Req x día Pres (días calendario)"
@@ -794,8 +794,8 @@ with tabs[1]:
             faltante_mes = presup_mes - prod_mes_actual
             pct_ejec_mes = (prod_mes_actual / presup_mes * 100) if presup_mes > 0 else 0.0
             pronostico_ejec_pct = (pronostico_mes / presup_mes * 100) if presup_mes > 0 else 0.0
-            proyectado_vs_forecast = presup_mes - pronostico_mes
-            compensacion_faltante = (proyectado_vs_forecast / presup_mes * 100) if presup_mes > 0 else 0.0
+            proyectado_vs_pronostico = presup_mes - pronostico_mes
+            compensacion_faltante = (proyectado_vs_pronostico / presup_mes * 100) if presup_mes > 0 else 0.0
             crec_fc_pct = ((pronostico_mes / prod_mes_previo) - 1) * 100 if prod_mes_previo > 0 else 0.0
 
             ultimo_dia_mes = periodo_actual + pd.offsets.MonthEnd(0)
@@ -814,7 +814,7 @@ with tabs[1]:
                 'Pronóstico (mes)': pronostico_mes,
                 'Crec. Fc (%)': crec_fc_pct,
                 'Pronóstico ejecución': pronostico_ejec_pct,
-                proyectado_vs_forecast_col: proyectado_vs_forecast,
+                proyectado_vs_pronostico_col: proyectado_vs_pronostico,
                 compensacion_col: compensacion_faltante,
                 req_dia_fc_col: req_dia_fc,
                 req_dia_pres_col: req_dia_pres
@@ -915,8 +915,8 @@ with tabs[1]:
                 pronostico_ejec_pct = 0.0
             else:
                 pronostico_ejec_pct = (cierre_estimado / presup_anual) * 100
-            proyectado_vs_forecast = presup_anual - cierre_estimado
-            compensacion_faltante = (proyectado_vs_forecast / presup_anual * 100) if presup_anual > 0 else 0.0
+            proyectado_vs_pronostico = presup_anual - cierre_estimado
+            compensacion_faltante = (proyectado_vs_pronostico / presup_anual * 100) if presup_anual > 0 else 0.0
             crec_fc_pct = ((cierre_estimado / prod_anio_previo) - 1) * 100 if prod_anio_previo > 0 else 0.0
 
             resumen_lineas.append({
@@ -929,7 +929,7 @@ with tabs[1]:
                 'Pronóstico (cierre)': cierre_estimado,
                 'Crec. Fc (%)': crec_fc_pct,
                 'Pronóstico ejecución': pronostico_ejec_pct,
-                proyectado_vs_forecast_col: proyectado_vs_forecast,
+                proyectado_vs_pronostico_col: proyectado_vs_pronostico,
                 compensacion_col: compensacion_faltante
             })
 
@@ -988,8 +988,8 @@ with tabs[1]:
             faltante_ytd = presup_ytd - ytd_con_forecast
             pct_ejec_ytd = (prod_ytd_actual / presup_ytd * 100) if presup_ytd > 0 else 0.0
             pronostico_ejec_pct = (ytd_con_forecast / presup_ytd * 100) if presup_ytd > 0 else 0.0
-            proyectado_vs_forecast = presup_ytd - ytd_con_forecast
-            compensacion_faltante = (proyectado_vs_forecast / presup_ytd * 100) if presup_ytd > 0 else 0.0
+            proyectado_vs_pronostico = presup_ytd - ytd_con_forecast
+            compensacion_faltante = (proyectado_vs_pronostico / presup_ytd * 100) if presup_ytd > 0 else 0.0
             crec_fc_pct = ((ytd_con_forecast / prod_ytd_previo) - 1) * 100 if prod_ytd_previo > 0 else 0.0
              
             resumen_lineas.append({
@@ -1002,7 +1002,7 @@ with tabs[1]:
                 'Pronóstico (YTD + mes)': ytd_con_forecast,
                 'Crec. Fc (%)': crec_fc_pct,
                 'Pronóstico ejecución': pronostico_ejec_pct,
-                proyectado_vs_forecast_col: proyectado_vs_forecast,
+                proyectado_vs_pronostico_col: proyectado_vs_pronostico,
                 compensacion_col: compensacion_faltante
             })
     
@@ -1036,7 +1036,7 @@ with tabs[1]:
                 elif 'Crec. Fc (%)' == col:
                     totales[col] = ((df_resumen[pronostico_col].sum() / df_resumen[previo_col].sum()) - 1) * 100 if df_resumen[previo_col].sum() > 0 else 0.0
                 elif compensacion_col == col:
-                    totales[col] = (df_resumen[proyectado_vs_forecast_col].sum() / df_resumen[proyectado_col].sum() * 100) if df_resumen[proyectado_col].sum() > 0 else 0.0
+                    totales[col] = (df_resumen[proyectado_vs_pronostico_col].sum() / df_resumen[proyectado_col].sum() * 100) if df_resumen[proyectado_col].sum() > 0 else 0.0
             else:
                 totales[col] = df_resumen[col].sum()
         
@@ -1095,7 +1095,7 @@ with tabs[1]:
                             style += "color:#16a34a;" if faltante_val <= 0 else "color:#ef4444;"
                         except:
                             pass
-                    elif col in [proyectado_vs_forecast_col, compensacion_col]:
+                    elif col in [proyectado_vs_pronostico_col, compensacion_col]:
                         try:
                             brecha_val = df_resumen.iloc[idx][col]
                             style += "color:#ef4444;font-weight:700;" if brecha_val > 0 else "color:#16a34a;font-weight:700;"
@@ -1119,7 +1119,7 @@ with tabs[1]:
             else:
                 # ── Obtener déficit por línea desde df_resumen (excluir fila TOTAL) ──
                 df_res_sin_total = df_resumen.iloc[:-1].copy()
-                deficit_por_linea = dict(zip(df_res_sin_total['LINEA_PLUS'], df_res_sin_total[proyectado_vs_forecast_col]))
+                deficit_por_linea = dict(zip(df_res_sin_total['LINEA_PLUS'], df_res_sin_total[proyectado_vs_pronostico_col]))
 
                 # ── Obtener PRESUPUESTO por sucursal×linea según vista activa ──
                 if vista_mes == "Mes":
@@ -1240,8 +1240,8 @@ with tabs[1]:
             fc_display['Pronostico_mensual'] = fc_display['Pronostico_mensual'] * 0.975
         
         fc_display['Pronostico_mensual'] = fc_display['Pronostico_mensual'].apply(fmt_cop)
-        fc_display = fc_display.rename(columns={'Pronostico_mensual': 'Pronóstico mensual'})
-        st.dataframe(fc_display[['FECHA', 'Pronóstico mensual']], use_container_width=True, hide_index=True)
+        fc_display = fc_display.rename(columns={'Pronostico_mensual': 'Pronóstico Mensual'})
+        st.dataframe(fc_display[['FECHA', 'Pronóstico Mensual']], use_container_width=True, hide_index=True)
     
     st.info(f"📊 SMAPE validación: {smape:.2f}%")
 
@@ -1307,9 +1307,9 @@ with tabs[1]:
             fc_display_sel['Pronostico_mensual'] = fc_display_sel['Pronostico_mensual'].apply(fmt_cop)
             fc_display_sel['IC_lo'] = fc_display_sel['IC_lo'].apply(fmt_cop)
             fc_display_sel['IC_hi'] = fc_display_sel['IC_hi'].apply(fmt_cop)
-            fc_display_sel = fc_display_sel.rename(columns={'Pronostico_mensual': 'Pronóstico mensual'})
+            fc_display_sel = fc_display_sel.rename(columns={'Pronostico_mensual': 'Pronóstico Mensual'})
             st.dataframe(
-                fc_display_sel[['FECHA', 'Pronóstico mensual', 'IC_lo', 'IC_hi']],
+                fc_display_sel[['FECHA', 'Pronóstico Mensual', 'IC_lo', 'IC_hi']],
                 use_container_width=True,
                 hide_index=True
             )
@@ -1514,11 +1514,11 @@ with tabs[2]:
             fc_display_f['Pronostico_ajustado_garantias'] = fc_display_f['Pronostico_ajustado_garantias'].apply(fmt_cop)
             fc_display_f['Diferencia'] = fc_display_f['Diferencia'].apply(fmt_cop)
             fc_display_f = fc_display_f.rename(columns={
-                'Pronostico_mensual': 'Pronóstico mensual',
-                'Pronostico_ajustado_garantias': 'Pronóstico ajustado garantías',
+                'Pronostico_mensual': 'Pronóstico Mensual',
+                'Pronostico_ajustado_garantias': 'Pronóstico Ajustado Garantías',
             })
             
-            st.dataframe(fc_display_f[['FECHA', 'Pronóstico mensual', 'Pronóstico ajustado garantías', 'Diferencia']], 
+            st.dataframe(fc_display_f[['FECHA', 'Pronóstico Mensual', 'Pronóstico Ajustado Garantías', 'Diferencia']], 
                         use_container_width=True, hide_index=True)
 
 # ========== TAB 4: PRESUPUESTO 2026 ==========
@@ -1565,4 +1565,3 @@ with tabs[3]:
                 )
             else:
                 st.warning("No se pudo generar presupuesto con los filtros actuales")
-
