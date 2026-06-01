@@ -185,7 +185,7 @@ st.markdown("""
 # ==================== LOAD DATA ====================
 @st.cache_data(ttl=3600)
 def load_and_process_data():
-    """Carga y procesa datos - Cache de 1 hora para actualización frecuente del nowcast"""
+    """Carga y procesa datos - Cache de 1 hora para reducir recargas y mejorar rendimiento"""
     df_raw = load_data()
     df_processed = normalize_dataframe(df_raw)
     fecha_corte = load_cutoff_date()
@@ -195,7 +195,7 @@ def load_and_process_data():
 @st.cache_data(ttl=3600)
 def nowcast_cached(prod_parcial: float, fecha_corte: pd.Timestamp,
                    forecast_completo: float) -> float:
-    """Calcula nowcast cacheado - se actualiza cada 60 minutos.
+    """Calcula nowcast cacheado - se actualiza cada hora (TTL 3600s).
 
     Fórmula: prod_parcial + forecast_completo × (días_restantes / días_totales)
     """
