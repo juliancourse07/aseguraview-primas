@@ -985,7 +985,7 @@ with tabs[1]:
                 pronostico_mes_actual = pronostico_mes_full if fecha_corte.month in meses_quarter else 0.0
 
             ytd_con_forecast = prod_meses_cerrados + pronostico_mes_actual
-            faltante_ytd = presup_ytd - ytd_con_forecast
+            faltante_ytd = presup_ytd - prod_ytd_actual
             pct_ejec_ytd = (prod_ytd_actual / presup_ytd * 100) if presup_ytd > 0 else 0.0
             pronostico_ejec_pct = (ytd_con_forecast / presup_ytd * 100) if presup_ytd > 0 else 0.0
             proyectado_vs_pronostico = presup_ytd - ytd_con_forecast
