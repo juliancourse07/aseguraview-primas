@@ -348,6 +348,76 @@ def _build_branch_heatmap_data(
     return pivot_metric_detalle, pivot_metric_export
 
 
+def _build_faltante_heatmap_data(
+    df_filtered: pd.DataFrame,
+    vista_mes: str,
+    periodo_actual: pd.Timestamp,
+    meses_quarter: list[int],
+    ref_year: int,
+    fecha_corte: pd.Timestamp,
+) -> tuple[pd.DataFrame, pd.DataFrame]:
+    """Calcula faltante directo por sucursal × línea: PRESUPUESTO - IMP_PRIMA."""
+    required_cols = {'FECHA', 'Suc_agrupada', 'LINEA_PLUS', 'PRESUPUESTO', 'IMP_PRIMA'}
+    if not required_cols.issubset(df_filtered.columns):
+        return pd.DataFrame(), pd.DataFrame()
+
+    if vista_mes == "Mes":
+        df_metric = df_filtered[
+            (df_filtered['FECHA'] == periodo_actual) &
+            (df_filtered['FECHA'].dt.month.isin(meses_quarter))
+        ].copy()
+    elif vista_mes == "Año":
+        df_metric = df_filtered[
+            (df_filtered['FECHA'].dt.year == ref_year) &
+            (df_filtered['FECHA'].dt.month.isin(meses_quarter))
+        ].copy()
+    else:
+        df_metric = df_filtered[
+            (df_filtered['FECHA'].dt.year == ref_year) &
+            (df_filtered['FECHA'].dt.month <= fecha_corte.month) &
+            (df_filtered['FECHA'].dt.month.isin(meses_quarter))
+        ].copy()
+
+    if df_metric.empty:
+        return pd.DataFrame(), pd.DataFrame()
+
+    df_metric['PRESUPUESTO'] = pd.to_numeric(df_metric['PRESUPUESTO'], errors='coerce').fillna(0.0)
+    df_metric['IMP_PRIMA'] = pd.to_numeric(df_metric['IMP_PRIMA'], errors='coerce').fillna(0.0)
+
+    df_resultado = (
+        df_metric
+        .groupby(['Suc_agrupada', 'LINEA_PLUS'], dropna=False)[['PRESUPUESTO', 'IMP_PRIMA']]
+        .sum()
+        .reset_index()
+    )
+    df_resultado['metric_value'] = df_resultado['PRESUPUESTO'] - df_resultado['IMP_PRIMA']
+
+    pivot_metric = df_resultado.pivot_table(
+        index='Suc_agrupada',
+        columns='LINEA_PLUS',
+        values='metric_value',
+        aggfunc='sum',
+        fill_value=0
+    )
+
+    if pivot_metric.empty:
+        return pd.DataFrame(), pd.DataFrame()
+
+    pivot_metric = pivot_metric[pivot_metric.sum(axis=1) != 0]
+    if pivot_metric.empty:
+        return pd.DataFrame(), pd.DataFrame()
+
+    pivot_metric_detalle = pivot_metric.loc[
+        pivot_metric.sum(axis=1).sort_values(ascending=False).index
+    ]
+    totales_linea = pivot_metric_detalle.sum(axis=0)
+    pivot_metric_export = pd.concat(
+        [pivot_metric_detalle, pd.DataFrame([totales_linea], index=['TOTAL LÍNEA'])]
+    )
+
+    return pivot_metric_detalle, pivot_metric_export
+
+
 # ====================  PAGE CONFIG ====================
 st.set_page_config(
     page_title=PAGE_TITLE,
@@ -1332,10 +1402,8 @@ with tabs[1]:
             elif 'PRESUPUESTO' not in df_filtered.columns:
                 st.info("📊 No se puede construir el mapa de calor porque no existe la columna PRESUPUESTO.")
             else:
-                pivot_faltante_detalle, pivot_faltante = _build_branch_heatmap_data(
+                pivot_faltante_detalle, pivot_faltante = _build_faltante_heatmap_data(
                     df_filtered=df_filtered,
-                    df_resumen=df_resumen,
-                    metric_col=faltante_col,
                     vista_mes=vista_mes,
                     periodo_actual=periodo_actual,
                     meses_quarter=meses_quarter,
