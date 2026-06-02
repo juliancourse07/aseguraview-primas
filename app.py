@@ -76,7 +76,12 @@ def _heatmap_cell_tokens(
     is_total: bool = False,
     highlight_negative: bool = False,
 ) -> tuple[str, str, str]:
-    """Devuelve tokens visuales para una celda del mapa."""
+    """Devuelve fondo, color de texto y borde para una celda del mapa.
+
+    Usa escala roja para valores positivos. Cuando ``highlight_negative`` es
+    verdadero, usa una escala verde para valores negativos basada en
+    ``max_negative``; en los demás casos deja valores no positivos en crema.
+    """
     value = float(value)
     if value > 0:
         ratio = min(value / max_positive, 1.0) if max_positive > 0 else 0.0
@@ -125,7 +130,12 @@ def _build_heatmap_html(
     note_text: str,
     highlight_negative: bool = False,
 ) -> str:
-    """Construye un mapa de calor HTML para ubicar los totales arriba de cada línea."""
+    """Construye el HTML de un mapa de calor con totales por línea.
+
+    Recibe el detalle por sucursal, la fila de totales, los textos visibles del
+    banner y una bandera para colorear valores negativos en verde cuando la
+    métrica así lo requiera.
+    """
     columnas = list(pivot_deficit_detalle.columns)
     if totales_linea.empty:
         total_values = pd.Series(dtype=float)
@@ -217,7 +227,14 @@ def _build_branch_heatmap_data(
     ref_year: int,
     fecha_corte: pd.Timestamp,
 ) -> tuple[pd.DataFrame, pd.DataFrame]:
-    """Distribuye una métrica por sucursal usando el peso presupuestal por línea."""
+    """Distribuye una métrica de línea hacia sucursal según el peso presupuestal.
+
+    Toma la métrica ya calculada en ``df_resumen`` para cada ``LINEA_PLUS`` y la
+    reparte entre las combinaciones ``Suc_agrupada`` × ``LINEA_PLUS`` usando
+    ``PRESUPUESTO`` como ponderador. Devuelve el detalle ordenado por faltante
+    total descendente y una segunda tabla lista para exportación con la fila
+    ``TOTAL LÍNEA`` agregada al final.
+    """
     df_res_sin_total = df_resumen.iloc[:-1].copy()
     metric_por_linea = dict(zip(df_res_sin_total['LINEA_PLUS'], df_res_sin_total[metric_col]))
 
