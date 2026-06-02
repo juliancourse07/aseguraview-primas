@@ -120,6 +120,10 @@ def _heatmap_cell_tokens(
     return background, text_color, border_color
 
 
+HEATMAP_TOTAL_ROW_LABELS = {'TOTAL', 'TOTAL LÍNEA'}
+HEATMAP_ROUNDING_TOLERANCE = 1e-6
+
+
 def _build_heatmap_html(
     pivot_deficit_detalle: pd.DataFrame,
     totales_linea: pd.Series,
@@ -239,10 +243,9 @@ def _build_branch_heatmap_data(
     if 'LINEA_PLUS' not in df_res_sin_total.columns or metric_col not in df_res_sin_total.columns:
         return pd.DataFrame(), pd.DataFrame()
 
-    total_row_labels = {'TOTAL', 'TOTAL LÍNEA'}
     df_res_sin_total = df_res_sin_total[df_res_sin_total['LINEA_PLUS'].notna()].copy()
     df_res_sin_total = df_res_sin_total[
-        ~df_res_sin_total['LINEA_PLUS'].astype(str).str.upper().isin(total_row_labels)
+        ~df_res_sin_total['LINEA_PLUS'].astype(str).str.upper().isin(HEATMAP_TOTAL_ROW_LABELS)
     ]
     if df_res_sin_total.empty:
         return pd.DataFrame(), pd.DataFrame()
@@ -284,7 +287,7 @@ def _build_branch_heatmap_data(
     ajustes_por_linea = (metric_total_por_linea - metric_distribuida_por_linea).fillna(0.0)
     idx_destino_por_linea = df_pres_suc.groupby('LINEA_PLUS')['PRESUPUESTO'].idxmax()
     for linea, ajuste in ajustes_por_linea.items():
-        if abs(ajuste) <= 1e-6 or pres_total_linea.get(linea, 0) <= 0:
+        if abs(ajuste) <= HEATMAP_ROUNDING_TOLERANCE or pres_total_linea.get(linea, 0) <= 0:
             continue
         idx_destino = idx_destino_por_linea.get(linea)
         if pd.isna(idx_destino):
