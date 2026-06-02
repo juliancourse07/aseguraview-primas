@@ -239,20 +239,29 @@ def _build_branch_heatmap_data(
     total descendente y una segunda tabla lista para exportación con la fila
     ``TOTAL LÍNEA`` agregada al final.
     """
+    # ========== 1. OBTENER MÉTRICA TOTAL POR LÍNEA ==========
     df_res_sin_total = df_resumen.copy()
+    
+    # Validar columnas necesarias
     if 'LINEA_PLUS' not in df_res_sin_total.columns or metric_col not in df_res_sin_total.columns:
         return pd.DataFrame(), pd.DataFrame()
 
+    # Filtrar filas de total
     df_res_sin_total = df_res_sin_total[df_res_sin_total['LINEA_PLUS'].notna()].copy()
     df_res_sin_total = df_res_sin_total[
-        ~df_res_sin_total['LINEA_PLUS'].astype(str).str.upper().isin(HEATMAP_TOTAL_ROW_LABELS)
+        ~df_res_sin_total['LINEA_PLUS'].astype(str).str.upper().isin({'TOTAL', 'TOTAL LÍNEA'})
     ]
+    
     if df_res_sin_total.empty:
         return pd.DataFrame(), pd.DataFrame()
 
+    # Convertir métrica a numérico
     df_res_sin_total[metric_col] = pd.to_numeric(df_res_sin_total[metric_col], errors='coerce').fillna(0.0)
+    
+    # ✅ TOTAL POR LÍNEA (este es el valor que hay que distribuir)
     metric_total_por_linea = df_res_sin_total.groupby('LINEA_PLUS', dropna=False)[metric_col].sum()
 
+    # ========== 2. OBTENER PRESUPUESTO POR SUCURSAL × LÍNEA ==========
     if vista_mes == "Mes":
         df_pres_suc = df_filtered[
             (df_filtered['FECHA'] == periodo_actual) &
@@ -274,45 +283,68 @@ def _build_branch_heatmap_data(
         return pd.DataFrame(), pd.DataFrame()
 
     df_pres_suc['PRESUPUESTO'] = pd.to_numeric(df_pres_suc['PRESUPUESTO'], errors='coerce').fillna(0.0)
-    pres_total_linea = df_pres_suc.groupby('LINEA_PLUS')['PRESUPUESTO'].sum()
-    df_pres_suc['metric_total_linea'] = df_pres_suc['LINEA_PLUS'].map(metric_total_por_linea).fillna(0.0)
-    df_pres_suc['pres_total_linea'] = df_pres_suc['LINEA_PLUS'].map(pres_total_linea).fillna(0.0)
-    df_pres_suc['metric_value'] = np.where(
-        df_pres_suc['pres_total_linea'] > 0,
-        df_pres_suc['metric_total_linea'] * (df_pres_suc['PRESUPUESTO'] / df_pres_suc['pres_total_linea']),
-        0.0,
-    )
+    
+    # ✅ TOTAL DE PRESUPUESTO POR LÍNEA
+    pres_total_por_linea = df_pres_suc.groupby('LINEA_PLUS')['PRESUPUESTO'].sum()
 
-    metric_distribuida_por_linea = df_pres_suc.groupby('LINEA_PLUS')['metric_value'].sum()
-    ajustes_por_linea = (metric_total_por_linea - metric_distribuida_por_linea).fillna(0.0)
-    idx_destino_por_linea = df_pres_suc.groupby('LINEA_PLUS')['PRESUPUESTO'].idxmax()
-    for linea, ajuste in ajustes_por_linea.items():
-        if abs(ajuste) <= HEATMAP_ROUNDING_TOLERANCE or pres_total_linea.get(linea, 0) <= 0:
-            continue
-        idx_destino = idx_destino_por_linea.get(linea)
-        if pd.isna(idx_destino):
-            continue
-        df_pres_suc.at[idx_destino, 'metric_value'] += float(ajuste)
+    # ========== 3. CALCULAR MÉTRICA PROPORCIONAL POR SUCURSAL ==========
+    resultados = []
+    
+    for _, row in df_pres_suc.iterrows():
+        linea = row['LINEA_PLUS']
+        sucursal = row['Suc_agrupada']
+        presup_sucursal = row['PRESUPUESTO']
+        
+        # Obtener total de la línea y presupuesto total
+        metric_total = metric_total_por_linea.get(linea, 0.0)
+        presup_total = pres_total_por_linea.get(linea, 0.0)
+        
+        # ✅ DISTRIBUCIÓN PROPORCIONAL
+        if presup_total > 0:
+            proporcion = presup_sucursal / presup_total
+            metric_sucursal = metric_total * proporcion
+        else:
+            metric_sucursal = 0.0
+        
+        resultados.append({
+            'Suc_agrupada': sucursal,
+            'LINEA_PLUS': linea,
+            'metric_value': metric_sucursal
+        })
+    
+    df_resultado = pd.DataFrame(resultados)
+    
+    if df_resultado.empty:
+        return pd.DataFrame(), pd.DataFrame()
 
-    pivot_metric = df_pres_suc.pivot_table(
-        index='Suc_agrupada', columns='LINEA_PLUS', values='metric_value', aggfunc='sum', fill_value=0
+    # ========== 4. CREAR PIVOT TABLE ==========
+    pivot_metric = df_resultado.pivot_table(
+        index='Suc_agrupada', 
+        columns='LINEA_PLUS', 
+        values='metric_value', 
+        aggfunc='sum', 
+        fill_value=0
     )
+    
     if pivot_metric.empty:
         return pd.DataFrame(), pd.DataFrame()
 
+    # Filtrar filas con todos ceros
     pivot_metric = pivot_metric[pivot_metric.sum(axis=1) != 0]
-    mask_all_zero = (pivot_metric == 0).all(axis=1)
-    pivot_metric = pivot_metric[~mask_all_zero]
+    
     if pivot_metric.empty:
         return pd.DataFrame(), pd.DataFrame()
 
+    # ========== 5. ORDENAR Y CREAR TABLA EXPORTABLE ==========
     pivot_metric_detalle = pivot_metric.loc[
         pivot_metric.sum(axis=1).sort_values(ascending=False).index
     ]
+    
     totales_linea = pivot_metric_detalle.sum(axis=0)
     pivot_metric_export = pd.concat(
         [pivot_metric_detalle, pd.DataFrame([totales_linea], index=['TOTAL LÍNEA'])]
     )
+    
     return pivot_metric_detalle, pivot_metric_export
 
 
