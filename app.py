@@ -239,9 +239,10 @@ def _build_branch_heatmap_data(
     if 'LINEA_PLUS' not in df_res_sin_total.columns or metric_col not in df_res_sin_total.columns:
         return pd.DataFrame(), pd.DataFrame()
 
+    total_row_labels = {'TOTAL', 'TOTAL LÍNEA'}
     df_res_sin_total = df_res_sin_total[df_res_sin_total['LINEA_PLUS'].notna()].copy()
     df_res_sin_total = df_res_sin_total[
-        ~df_res_sin_total['LINEA_PLUS'].astype(str).str.upper().isin(['TOTAL', 'TOTAL LÍNEA'])
+        ~df_res_sin_total['LINEA_PLUS'].astype(str).str.upper().isin(total_row_labels)
     ]
     if df_res_sin_total.empty:
         return pd.DataFrame(), pd.DataFrame()
@@ -281,13 +282,13 @@ def _build_branch_heatmap_data(
 
     metric_distribuida_por_linea = df_pres_suc.groupby('LINEA_PLUS')['metric_value'].sum()
     ajustes_por_linea = (metric_total_por_linea - metric_distribuida_por_linea).fillna(0.0)
+    idx_destino_por_linea = df_pres_suc.groupby('LINEA_PLUS')['PRESUPUESTO'].idxmax()
     for linea, ajuste in ajustes_por_linea.items():
         if abs(ajuste) <= 1e-6 or pres_total_linea.get(linea, 0) <= 0:
             continue
-        filas_linea = df_pres_suc[df_pres_suc['LINEA_PLUS'] == linea]
-        if filas_linea.empty:
+        idx_destino = idx_destino_por_linea.get(linea)
+        if pd.isna(idx_destino):
             continue
-        idx_destino = filas_linea['PRESUPUESTO'].idxmax()
         df_pres_suc.at[idx_destino, 'metric_value'] += float(ajuste)
 
     pivot_metric = df_pres_suc.pivot_table(
