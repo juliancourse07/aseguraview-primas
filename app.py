@@ -69,7 +69,13 @@ def _blend_hex(start_hex: str, end_hex: str, ratio: float) -> str:
     return f"#{mixed[0]:02x}{mixed[1]:02x}{mixed[2]:02x}"
 
 
-def _heatmap_cell_tokens(value: float, max_positive: float, is_total: bool = False) -> tuple[str, str, str]:
+def _heatmap_cell_tokens(
+    value: float,
+    max_positive: float,
+    max_negative: float = 0.0,
+    is_total: bool = False,
+    highlight_negative: bool = False,
+) -> tuple[str, str, str]:
     """Devuelve tokens visuales para una celda del mapa."""
     value = float(value)
     if value > 0:
@@ -85,6 +91,19 @@ def _heatmap_cell_tokens(value: float, max_positive: float, is_total: bool = Fal
         )
         text_color = "#fff7ed"
         border_color = "rgba(255,255,255,0.12)"
+    elif highlight_negative and value < 0:
+        ratio = min(abs(value) / max_negative, 1.0) if max_negative > 0 else 0.0
+        accent = _blend_hex(
+            "#4ade80" if is_total else "#16a34a",
+            "#14532d",
+            _HEATMAP_MIN_BLEND_RATIO + ratio * _HEATMAP_BLEND_RANGE,
+        )
+        background = (
+            f"linear-gradient(135deg, {_hex_to_rgba(accent, 0.92)}, "
+            f"{_hex_to_rgba('#14532d', 0.97)})"
+        )
+        text_color = "#f0fdf4"
+        border_color = "rgba(255,255,255,0.14)"
     else:
         base = "#fff1e4" if is_total else "#fff8f0"
         background = (
@@ -96,11 +115,15 @@ def _heatmap_cell_tokens(value: float, max_positive: float, is_total: bool = Fal
     return background, text_color, border_color
 
 
-def _build_deficit_heatmap_html(
+def _build_heatmap_html(
     pivot_deficit_detalle: pd.DataFrame,
     totales_linea: pd.Series,
     vista_mes: str,
     periodo_actual: pd.Timestamp,
+    title_text: str,
+    legend_text: str,
+    note_text: str,
+    highlight_negative: bool = False,
 ) -> str:
     """Construye un mapa de calor HTML para ubicar los totales arriba de cada línea."""
     columnas = list(pivot_deficit_detalle.columns)
@@ -115,15 +138,17 @@ def _build_deficit_heatmap_html(
         detail_values = pivot_deficit_detalle.to_numpy(dtype=float).ravel()
     combined_values = np.concatenate([detail_values, total_values.to_numpy()]) if not total_values.empty else detail_values
     positivos = [v for v in combined_values.astype(float) if v > 0]
+    negativos = [abs(v) for v in combined_values.astype(float) if v < 0]
     max_positive = max(positivos, default=1.0)
+    max_negative = max(negativos, default=1.0)
     grid_style = f"grid-template-columns:minmax(190px,1.35fr) repeat({len(columnas)}, minmax(120px,1fr));"
 
     html_parts = [
         '<div class="heatmap-shell">',
         (
             '<div class="heatmap-banner">'
-            f'<div class="heatmap-title">🔥 Déficit vs Meta — {html.escape(vista_mes)} | {html.escape(periodo_actual.strftime("%m/%Y"))} (Proyectado(-)Pronóstico)</div>'
-            '<div class="heatmap-legend">🔴 Rojo intenso = valores positivos (Déficit vs pronóstico) | ⬜ Crema = cero o faltante</div>'
+            f'<div class="heatmap-title">{html.escape(title_text)} — {html.escape(vista_mes)} | {html.escape(periodo_actual.strftime("%m/%Y"))}</div>'
+            f'<div class="heatmap-legend">{html.escape(legend_text)}</div>'
             '</div>'
         ),
         f'<div class="heatmap-grid" style="{grid_style}">',
@@ -132,7 +157,13 @@ def _build_deficit_heatmap_html(
 
     for linea in columnas:
         value = float(total_values.get(linea, 0.0))
-        background, text_color, border_color = _heatmap_cell_tokens(value, max_positive, is_total=True)
+        background, text_color, border_color = _heatmap_cell_tokens(
+            value,
+            max_positive,
+            max_negative=max_negative,
+            is_total=True,
+            highlight_negative=highlight_negative,
+        )
         positive_class = " heatmap-total-positive" if value > 0 else ""
         html_parts.append(
             (
@@ -152,7 +183,12 @@ def _build_deficit_heatmap_html(
         html_parts.append(f'<div class="heatmap-row-label">{html.escape(str(sucursal))}</div>')
         for linea in columnas:
             value = float(row[linea])
-            background, text_color, border_color = _heatmap_cell_tokens(value, max_positive)
+            background, text_color, border_color = _heatmap_cell_tokens(
+                value,
+                max_positive,
+                max_negative=max_negative,
+                highlight_negative=highlight_negative,
+            )
             positive_class = " heatmap-cell-positive" if value > 0 else ""
             html_parts.append(
                 (
@@ -165,10 +201,77 @@ def _build_deficit_heatmap_html(
 
     html_parts.extend([
         '</div>',
-        '<div class="heatmap-note">⚠️ La métrica es Proyectado(-)Pronóstico: los valores positivos tienen una animación suave como señal de alerta visual frente al riesgo de déficit frente al pronóstico.</div>',
+        f'<div class="heatmap-note">{html.escape(note_text)}</div>',
         '</div>',
     ])
     return ''.join(html_parts)
+
+
+def _build_branch_heatmap_data(
+    df_filtered: pd.DataFrame,
+    df_resumen: pd.DataFrame,
+    metric_col: str,
+    vista_mes: str,
+    periodo_actual: pd.Timestamp,
+    meses_quarter: list[int],
+    ref_year: int,
+    fecha_corte: pd.Timestamp,
+) -> tuple[pd.DataFrame, pd.DataFrame]:
+    """Distribuye una métrica por sucursal usando el peso presupuestal por línea."""
+    df_res_sin_total = df_resumen.iloc[:-1].copy()
+    metric_por_linea = dict(zip(df_res_sin_total['LINEA_PLUS'], df_res_sin_total[metric_col]))
+
+    if vista_mes == "Mes":
+        df_pres_suc = df_filtered[
+            (df_filtered['FECHA'] == periodo_actual) &
+            (df_filtered['FECHA'].dt.month.isin(meses_quarter))
+        ].groupby(['Suc_agrupada', 'LINEA_PLUS'], dropna=False)['PRESUPUESTO'].sum().reset_index()
+    elif vista_mes == "Año":
+        df_pres_suc = df_filtered[
+            (df_filtered['FECHA'].dt.year == ref_year) &
+            (df_filtered['FECHA'].dt.month.isin(meses_quarter))
+        ].groupby(['Suc_agrupada', 'LINEA_PLUS'], dropna=False)['PRESUPUESTO'].sum().reset_index()
+    else:
+        df_pres_suc = df_filtered[
+            (df_filtered['FECHA'].dt.year == ref_year) &
+            (df_filtered['FECHA'].dt.month <= fecha_corte.month) &
+            (df_filtered['FECHA'].dt.month.isin(meses_quarter))
+        ].groupby(['Suc_agrupada', 'LINEA_PLUS'], dropna=False)['PRESUPUESTO'].sum().reset_index()
+
+    if df_pres_suc.empty:
+        return pd.DataFrame(), pd.DataFrame()
+
+    pres_total_linea = df_pres_suc.groupby('LINEA_PLUS')['PRESUPUESTO'].sum()
+
+    def calcular_metrica_suc(row):
+        total_linea = pres_total_linea.get(row['LINEA_PLUS'], 0)
+        metrica_linea = metric_por_linea.get(row['LINEA_PLUS'], 0)
+        if total_linea > 0:
+            return metrica_linea * (row['PRESUPUESTO'] / total_linea)
+        return 0.0
+
+    df_pres_suc['metric_value'] = df_pres_suc.apply(calcular_metrica_suc, axis=1)
+
+    pivot_metric = df_pres_suc.pivot_table(
+        index='Suc_agrupada', columns='LINEA_PLUS', values='metric_value', aggfunc='sum', fill_value=0
+    )
+    if pivot_metric.empty:
+        return pd.DataFrame(), pd.DataFrame()
+
+    pivot_metric = pivot_metric[pivot_metric.sum(axis=1) != 0]
+    mask_all_zero = (pivot_metric == 0).all(axis=1)
+    pivot_metric = pivot_metric[~mask_all_zero]
+    if pivot_metric.empty:
+        return pd.DataFrame(), pd.DataFrame()
+
+    pivot_metric_detalle = pivot_metric.loc[
+        pivot_metric.sum(axis=1).sort_values(ascending=False).index
+    ]
+    totales_linea = pivot_metric_detalle.sum(axis=0)
+    pivot_metric_export = pd.concat(
+        [pivot_metric_detalle, pd.DataFrame([totales_linea], index=['TOTAL LÍNEA'])]
+    )
+    return pivot_metric_detalle, pivot_metric_export
 
 
 # ====================  PAGE CONFIG ====================
@@ -627,6 +730,10 @@ if filters.get('codigos') and 'CODIGO' in df_filtered.columns:
 # Filtrar por Sucursal (si columna existe y hay selección)
 if filters.get('sucursales') and 'SUCURSAL' in df_filtered.columns:
     df_filtered = df_filtered[df_filtered['SUCURSAL'].isin(filters['sucursales'])]
+
+# Filtrar por Sucursal Agrupada (si columna existe y hay selección)
+if filters.get('suc_agrupadas') and 'Suc_agrupada' in df_filtered.columns:
+    df_filtered = df_filtered[df_filtered['Suc_agrupada'].isin(filters['suc_agrupadas'])]
 
 # Filtrar por año de análisis
 df_filtered = df_filtered[df_filtered['FECHA'].dt.year <= filters['anio_analisis']]
@@ -1110,6 +1217,7 @@ with tabs[1]:
 
         st.markdown("---")
         pivot_deficit = pd.DataFrame()
+        pivot_faltante = pd.DataFrame()
 
         with st.expander("🔥 Mapa de Calor 1 — Déficit vs Meta por Sucursal y Línea", expanded=False):
             if 'Suc_agrupada' not in df_filtered.columns:
@@ -1117,78 +1225,66 @@ with tabs[1]:
             elif 'PRESUPUESTO' not in df_filtered.columns:
                 st.info("📊 No se puede construir el mapa de calor porque no existe la columna PRESUPUESTO.")
             else:
-                # ── Obtener déficit por línea desde df_resumen (excluir fila TOTAL) ──
-                df_res_sin_total = df_resumen.iloc[:-1].copy()
-                deficit_por_linea = dict(zip(df_res_sin_total['LINEA_PLUS'], df_res_sin_total[proyectado_vs_pronostico_col]))
+                pivot_deficit_detalle, pivot_deficit = _build_branch_heatmap_data(
+                    df_filtered=df_filtered,
+                    df_resumen=df_resumen,
+                    metric_col=proyectado_vs_pronostico_col,
+                    vista_mes=vista_mes,
+                    periodo_actual=periodo_actual,
+                    meses_quarter=meses_quarter,
+                    ref_year=ref_year,
+                    fecha_corte=fecha_corte,
+                )
 
-                # ── Obtener PRESUPUESTO por sucursal×linea según vista activa ──
-                if vista_mes == "Mes":
-                    df_pres_suc = df_filtered[
-                        (df_filtered['FECHA'] == periodo_actual) &
-                        (df_filtered['FECHA'].dt.month.isin(meses_quarter))
-                    ].groupby(['Suc_agrupada', 'LINEA_PLUS'], dropna=False)['PRESUPUESTO'].sum().reset_index()
-                elif vista_mes == "Año":
-                    df_pres_suc = df_filtered[
-                        (df_filtered['FECHA'].dt.year == ref_year) &
-                        (df_filtered['FECHA'].dt.month.isin(meses_quarter))
-                    ].groupby(['Suc_agrupada', 'LINEA_PLUS'], dropna=False)['PRESUPUESTO'].sum().reset_index()
-                else:  # Acumulado Mes
-                    df_pres_suc = df_filtered[
-                        (df_filtered['FECHA'].dt.year == ref_year) &
-                        (df_filtered['FECHA'].dt.month <= fecha_corte.month) &
-                        (df_filtered['FECHA'].dt.month.isin(meses_quarter))
-                    ].groupby(['Suc_agrupada', 'LINEA_PLUS'], dropna=False)['PRESUPUESTO'].sum().reset_index()
-
-                if df_pres_suc.empty:
+                if pivot_deficit.empty:
                     st.info("📊 No hay datos de presupuesto por sucursal para construir el mapa de calor.")
                 else:
-                    # Presupuesto total por línea (para calcular el peso de cada sucursal)
-                    pres_total_linea = df_pres_suc.groupby('LINEA_PLUS')['PRESUPUESTO'].sum()
-
-                    # Distribuir el déficit de cada línea proporcionalmente al peso presupuestal de cada sucursal
-                    def calcular_deficit_suc(row):
-                        total_linea = pres_total_linea.get(row['LINEA_PLUS'], 0)
-                        deficit_linea = deficit_por_linea.get(row['LINEA_PLUS'], 0)
-                        if total_linea > 0:
-                            return deficit_linea * (row['PRESUPUESTO'] / total_linea)
-                        return 0.0
-
-                    df_pres_suc['deficit'] = df_pres_suc.apply(calcular_deficit_suc, axis=1)
-
-                    pivot_deficit = df_pres_suc.pivot_table(
-                        index='Suc_agrupada', columns='LINEA_PLUS', values='deficit', aggfunc='sum', fill_value=0
+                    totales_linea = pivot_deficit.loc['TOTAL LÍNEA']
+                    heatmap_html = _build_heatmap_html(
+                        pivot_deficit_detalle=pivot_deficit_detalle,
+                        totales_linea=totales_linea,
+                        vista_mes=vista_mes,
+                        periodo_actual=periodo_actual,
+                        title_text="🔥 Déficit vs Meta",
+                        legend_text="🔴 Rojo intenso = valores positivos (Déficit vs pronóstico) | ⬜ Crema = cero o faltante",
+                        note_text="⚠️ La métrica es Proyectado(-)Pronóstico: los valores positivos tienen una animación suave como señal de alerta visual frente al riesgo de déficit frente al pronóstico.",
                     )
+                    st.markdown(heatmap_html, unsafe_allow_html=True)
+                    st.caption("🔴 Rojo escarlata = valores positivos de Proyectado(-)Pronóstico (superávit frente al pronóstico) | ⬜ Blanco crema = cero o faltante | Los totales por línea se muestran antes del detalle por sucursal")
 
-                    had_data_before_filter = not pivot_deficit.empty
-                    if pivot_deficit.empty:
-                        st.info("📊 No hay datos suficientes para mostrar el mapa de calor con los filtros actuales.")
-                    else:
-                        # Excluir sucursales con déficit 0 en TODAS las líneas
-                        pivot_deficit = pivot_deficit[pivot_deficit.sum(axis=1) != 0]
-                        # También excluir si todos son exactamente 0
-                        mask_all_zero = (pivot_deficit == 0).all(axis=1)
-                        pivot_deficit = pivot_deficit[~mask_all_zero]
+        with st.expander("🔥 Mapa de Calor 2 — Faltante Proyectado por Sucursal y Línea", expanded=False):
+            if 'Suc_agrupada' not in df_filtered.columns:
+                st.info("No hay columna Suc_agrupada disponible para mostrar la matriz")
+            elif 'PRESUPUESTO' not in df_filtered.columns:
+                st.info("📊 No se puede construir el mapa de calor porque no existe la columna PRESUPUESTO.")
+            else:
+                pivot_faltante_detalle, pivot_faltante = _build_branch_heatmap_data(
+                    df_filtered=df_filtered,
+                    df_resumen=df_resumen,
+                    metric_col=faltante_col,
+                    vista_mes=vista_mes,
+                    periodo_actual=periodo_actual,
+                    meses_quarter=meses_quarter,
+                    ref_year=ref_year,
+                    fecha_corte=fecha_corte,
+                )
 
-                    if had_data_before_filter and pivot_deficit.empty:
-                        st.info("📊 Todas las sucursales tienen déficit cero para los filtros actuales.")
-                    elif not pivot_deficit.empty:
-                        # Ordenar filas: mayor déficit total arriba
-                        pivot_deficit_detalle = pivot_deficit.loc[
-                            pivot_deficit.sum(axis=1).sort_values(ascending=False).index
-                        ]
-                        totales_linea = pivot_deficit_detalle.sum(axis=0)
-                        pivot_deficit = pd.concat(
-                            [pivot_deficit_detalle, pd.DataFrame([totales_linea], index=['TOTAL LÍNEA'])]
-                        )
-
-                        heatmap_html = _build_deficit_heatmap_html(
-                            pivot_deficit_detalle=pivot_deficit_detalle,
-                            totales_linea=totales_linea,
-                            vista_mes=vista_mes,
-                            periodo_actual=periodo_actual,
-                        )
-                        st.markdown(heatmap_html, unsafe_allow_html=True)
-                        st.caption("🔴 Rojo escarlata = valores positivos de Proyectado(-)Pronóstico (superávit frente al pronóstico) | ⬜ Blanco crema = cero o faltante | Los totales por línea se muestran antes del detalle por sucursal")
+                if pivot_faltante.empty:
+                    st.info("📊 No hay datos de presupuesto por sucursal para construir el mapa de calor.")
+                else:
+                    totales_linea = pivot_faltante.loc['TOTAL LÍNEA']
+                    heatmap_html = _build_heatmap_html(
+                        pivot_deficit_detalle=pivot_faltante_detalle,
+                        totales_linea=totales_linea,
+                        vista_mes=vista_mes,
+                        periodo_actual=periodo_actual,
+                        title_text="🔥 Faltante Proyectado",
+                        legend_text="🔴 Rojo = falta producir | 🟢 Verde = meta cumplida | ⬜ Crema = cero",
+                        note_text="⚠️ El Faltante Proyectado muestra lo que resta por producir vs. presupuesto basado en producción REAL actual (no incluye pronóstico). Valores positivos indican que falta cumplir meta.",
+                        highlight_negative=True,
+                    )
+                    st.markdown(heatmap_html, unsafe_allow_html=True)
+                    st.caption("🔴 Rojo = falta producir | 🟢 Verde = meta cumplida | ⬜ Crema = cero | Los totales por línea se muestran antes del detalle por sucursal")
 
         # Exportación unificada
         with BytesIO() as buf:
@@ -1200,11 +1296,17 @@ with tabs[1]:
                     )
                 else:
                     pivot_deficit.to_excel(writer, sheet_name="Deficit_vs_Meta")
+                if pivot_faltante.empty:
+                    pd.DataFrame([{"Nota": "Sin datos para Faltante proyectado con los filtros actuales"}]).to_excel(
+                        writer, sheet_name="Faltante_Proyectado", index=False
+                    )
+                else:
+                    pivot_faltante.to_excel(writer, sheet_name="Faltante_Proyectado")
             excel_bytes = buf.getvalue()
 
         vista_label = {"Mes": "mes", "Año": "anio", "Acumulado Mes": "acumulado"}.get(vista_mes, "general")
         st.download_button(
-            label="⬇️ Exportar resumen + mapa de calor a Excel",
+            label="⬇️ Exportar resumen + mapas de calor a Excel",
             data=excel_bytes,
             file_name=f"aseguraview_{vista_label}_{periodo_actual.strftime('%Y%m')}.xlsx",
             mime="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
