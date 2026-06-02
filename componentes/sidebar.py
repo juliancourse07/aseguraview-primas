@@ -8,7 +8,7 @@ import pandas as pd
 
 def render_sidebar(df: pd.DataFrame, fecha_corte: pd.Timestamp) -> dict:
     """
-    Renderiza sidebar con filtros: Línea+, Código, Sucursal y ajustes de pronóstico.
+    Renderiza sidebar con filtros: Línea+, Código, Sucursal, Sucursal Agrupada y ajustes de pronóstico.
     """
     st.sidebar.header("🔍 Filtros")
 
@@ -48,6 +48,20 @@ def render_sidebar(df: pd.DataFrame, fecha_corte: pd.Timestamp) -> dict:
     else:
         st.sidebar.caption("ℹ️ Columna SUCURSAL no disponible en los datos.")
 
+    # ── Filtro Sucursal Agrupada ─────────────────────────────────────────────
+    suc_agrupadas_selected = []
+    if 'Suc_agrupada' in df.columns:
+        suc_agrupadas_opts = sorted(df['Suc_agrupada'].dropna().unique().tolist())
+        suc_agrupadas_selected = st.sidebar.multiselect(
+            "Sucursal Agrupada",
+            options=suc_agrupadas_opts,
+            default=suc_agrupadas_opts,
+            key="filtro_suc_agrupada",
+            help="Filtra por sucursal agrupada"
+        )
+    else:
+        st.sidebar.caption("ℹ️ Columna Suc_agrupada no disponible en los datos.")
+
     anio_analisis = st.sidebar.number_input(
         "Año de análisis",
         min_value=2018,
@@ -83,6 +97,7 @@ def render_sidebar(df: pd.DataFrame, fecha_corte: pd.Timestamp) -> dict:
         'linea_plus': linea_selected,
         'codigos': codigos_selected,
         'sucursales': sucursales_selected,
+        'suc_agrupadas': suc_agrupadas_selected,
         'anio_analisis': int(anio_analisis),
         'ajuste_pct': float(ajuste_pct),
         'nota_ajuste': nota_ajuste,
