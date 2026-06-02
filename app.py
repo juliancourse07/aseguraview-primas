@@ -120,6 +120,10 @@ def _heatmap_cell_tokens(
     return background, text_color, border_color
 
 
+HEATMAP_TOTAL_ROW_LABELS = {'TOTAL', 'TOTAL LÍNEA'}
+HEATMAP_ROUNDING_TOLERANCE = 1e-6
+
+
 def _build_heatmap_html(
     pivot_deficit_detalle: pd.DataFrame,
     totales_linea: pd.Series,
@@ -235,8 +239,19 @@ def _build_branch_heatmap_data(
     total descendente y una segunda tabla lista para exportación con la fila
     ``TOTAL LÍNEA`` agregada al final.
     """
-    df_res_sin_total = df_resumen.iloc[:-1].copy()
-    metric_por_linea = dict(zip(df_res_sin_total['LINEA_PLUS'], df_res_sin_total[metric_col]))
+    df_res_sin_total = df_resumen.copy()
+    if 'LINEA_PLUS' not in df_res_sin_total.columns or metric_col not in df_res_sin_total.columns:
+        return pd.DataFrame(), pd.DataFrame()
+
+    df_res_sin_total = df_res_sin_total[df_res_sin_total['LINEA_PLUS'].notna()].copy()
+    df_res_sin_total = df_res_sin_total[
+        ~df_res_sin_total['LINEA_PLUS'].astype(str).str.upper().isin(HEATMAP_TOTAL_ROW_LABELS)
+    ]
+    if df_res_sin_total.empty:
+        return pd.DataFrame(), pd.DataFrame()
+
+    df_res_sin_total[metric_col] = pd.to_numeric(df_res_sin_total[metric_col], errors='coerce').fillna(0.0)
+    metric_total_por_linea = df_res_sin_total.groupby('LINEA_PLUS', dropna=False)[metric_col].sum()
 
     if vista_mes == "Mes":
         df_pres_suc = df_filtered[
@@ -258,16 +273,26 @@ def _build_branch_heatmap_data(
     if df_pres_suc.empty:
         return pd.DataFrame(), pd.DataFrame()
 
+    df_pres_suc['PRESUPUESTO'] = pd.to_numeric(df_pres_suc['PRESUPUESTO'], errors='coerce').fillna(0.0)
     pres_total_linea = df_pres_suc.groupby('LINEA_PLUS')['PRESUPUESTO'].sum()
+    df_pres_suc['metric_total_linea'] = df_pres_suc['LINEA_PLUS'].map(metric_total_por_linea).fillna(0.0)
+    df_pres_suc['pres_total_linea'] = df_pres_suc['LINEA_PLUS'].map(pres_total_linea).fillna(0.0)
+    df_pres_suc['metric_value'] = np.where(
+        df_pres_suc['pres_total_linea'] > 0,
+        df_pres_suc['metric_total_linea'] * (df_pres_suc['PRESUPUESTO'] / df_pres_suc['pres_total_linea']),
+        0.0,
+    )
 
-    def calcular_metrica_suc(row):
-        total_linea = pres_total_linea.get(row['LINEA_PLUS'], 0)
-        metrica_linea = metric_por_linea.get(row['LINEA_PLUS'], 0)
-        if total_linea > 0:
-            return metrica_linea * (row['PRESUPUESTO'] / total_linea)
-        return 0.0
-
-    df_pres_suc['metric_value'] = df_pres_suc.apply(calcular_metrica_suc, axis=1)
+    metric_distribuida_por_linea = df_pres_suc.groupby('LINEA_PLUS')['metric_value'].sum()
+    ajustes_por_linea = (metric_total_por_linea - metric_distribuida_por_linea).fillna(0.0)
+    idx_destino_por_linea = df_pres_suc.groupby('LINEA_PLUS')['PRESUPUESTO'].idxmax()
+    for linea, ajuste in ajustes_por_linea.items():
+        if abs(ajuste) <= HEATMAP_ROUNDING_TOLERANCE or pres_total_linea.get(linea, 0) <= 0:
+            continue
+        idx_destino = idx_destino_por_linea.get(linea)
+        if pd.isna(idx_destino):
+            continue
+        df_pres_suc.at[idx_destino, 'metric_value'] += float(ajuste)
 
     pivot_metric = df_pres_suc.pivot_table(
         index='Suc_agrupada', columns='LINEA_PLUS', values='metric_value', aggfunc='sum', fill_value=0
