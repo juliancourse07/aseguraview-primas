@@ -520,11 +520,18 @@ def fmt_cop_short(value: float) -> str:
 
 
 def _line_adjustment_factor(linea: str) -> float:
+    """Retorna el factor de ajuste conservador por línea de negocio.
+
+    Ajustes conservadores originales (restaurados):
+    - FIANZAS: 0.95 (-5.0%)
+    - SOAT: 1.0 (0%)
+    - Otras líneas: 0.99 (-1.0%)
+    """
     if linea == "FIANZAS":
-        return 0.975
+        return 0.95
     if linea == "SOAT":
         return 1.0
-    return 0.995
+    return 0.99
 
 
 def _compute_single_line_detailed_forecast(
@@ -1030,11 +1037,11 @@ with tabs[1]:
             is_partial_temp = fc_result['is_partial']
 
             if linea == "FIANZAS":
-                pronostico_mes_full = pronostico_mes_full * 0.970
+                pronostico_mes_full = pronostico_mes_full * 0.95
             elif linea == "SOAT":
                 pass  # Sin ajuste
             else:
-                pronostico_mes_full = pronostico_mes_full * 0.992
+                pronostico_mes_full = pronostico_mes_full * 0.99
 
             # Nowcast: ajuste dinámico usando producción parcial + proporción restante del pronóstico
             if is_partial_temp:
@@ -1131,11 +1138,11 @@ with tabs[1]:
                 fc_valores_list = fc_result_anio['fc_valores']
 
                 if linea == "FIANZAS":
-                    fc_valores_list = [v * 0.970 for v in fc_valores_list]
+                    fc_valores_list = [v * 0.95 for v in fc_valores_list]
                 elif linea == "SOAT":
                     pass  # Sin ajuste
                 else:
-                    fc_valores_list = [v * 0.992 for v in fc_valores_list]
+                    fc_valores_list = [v * 0.99 for v in fc_valores_list]
 
                 is_partial_temp = fc_result_anio['is_partial']
 
@@ -1216,11 +1223,11 @@ with tabs[1]:
             is_partial_temp = fc_result_acum['is_partial']
 
             if linea == "FIANZAS":
-                pronostico_mes_full = pronostico_mes_full * 0.970
+                pronostico_mes_full = pronostico_mes_full * 0.95
             elif linea == "SOAT":
                 pass  # Sin ajuste
             else:
-                pronostico_mes_full = pronostico_mes_full * 0.992
+                pronostico_mes_full = pronostico_mes_full * 0.99
 
             prod_meses_cerrados= df_linea[
                 (df_linea['FECHA'].dt.year == ref_year) &
@@ -1463,7 +1470,7 @@ with tabs[1]:
     proy_total = float(fc_df['Pronostico_mensual'].sum()) if not fc_df.empty else 0.0
     
     if filters['linea_plus'] == "FIANZAS":
-        proy_total = proy_total * 0.970
+        proy_total = proy_total * 0.95
     
     cierre_est = prod_total + proy_total
     
@@ -1481,7 +1488,7 @@ with tabs[1]:
         fc_display['FECHA'] = fc_display['FECHA'].dt.strftime('%b-%Y')
         
         if filters['linea_plus'] == "FIANZAS":
-            fc_display['Pronostico_mensual'] = fc_display['Pronostico_mensual'] * 0.975
+            fc_display['Pronostico_mensual'] = fc_display['Pronostico_mensual'] * 0.95
         
         fc_display['Pronostico_mensual'] = fc_display['Pronostico_mensual'].apply(fmt_cop)
         fc_display = fc_display.rename(columns={'Pronostico_mensual': 'Pronóstico Mensual'})
@@ -1515,16 +1522,16 @@ with tabs[1]:
         # Aplicar ajustes específicos por línea (NO MODIFICAR ESTA LÓGICA)
         if linea_seleccionada == "FIANZAS":
             fc_sel = fc_sel.copy()
-            fc_sel['Pronostico_mensual'] = fc_sel['Pronostico_mensual'] * 0.975
-            fc_sel['IC_lo'] = fc_sel['IC_lo'] * 0.970
-            fc_sel['IC_hi'] = fc_sel['IC_hi'] * 0.970
+            fc_sel['Pronostico_mensual'] = fc_sel['Pronostico_mensual'] * 0.95
+            fc_sel['IC_lo'] = fc_sel['IC_lo'] * 0.95
+            fc_sel['IC_hi'] = fc_sel['IC_hi'] * 0.95
         elif linea_seleccionada == "SOAT":
             pass  # Sin ajuste
         else:
             fc_sel = fc_sel.copy()
-            fc_sel['Pronostico_mensual'] = fc_sel['Pronostico_mensual'] * 0.995
-            fc_sel['IC_lo'] = fc_sel['IC_lo'] * 0.992
-            fc_sel['IC_hi'] = fc_sel['IC_hi'] * 0.992
+            fc_sel['Pronostico_mensual'] = fc_sel['Pronostico_mensual'] * 0.99
+            fc_sel['IC_lo'] = fc_sel['IC_lo'] * 0.99
+            fc_sel['IC_hi'] = fc_sel['IC_hi'] * 0.99
 
         # Métricas en columnas
         col1, col2, col3, col4 = st.columns(4)
