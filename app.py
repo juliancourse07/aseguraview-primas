@@ -1030,11 +1030,11 @@ with tabs[1]:
             is_partial_temp = fc_result['is_partial']
 
             if linea == "FIANZAS":
-                pronostico_mes_full = pronostico_mes_full * 0.975
+                pronostico_mes_full = pronostico_mes_full * 0.970
             elif linea == "SOAT":
                 pass  # Sin ajuste
             else:
-                pronostico_mes_full = pronostico_mes_full * 0.995
+                pronostico_mes_full = pronostico_mes_full * 0.992
 
             # Nowcast: ajuste dinámico usando producción parcial + proporción restante del pronóstico
             if is_partial_temp:
@@ -1131,11 +1131,11 @@ with tabs[1]:
                 fc_valores_list = fc_result_anio['fc_valores']
 
                 if linea == "FIANZAS":
-                    fc_valores_list = [v * 0.975 for v in fc_valores_list]
+                    fc_valores_list = [v * 0.970 for v in fc_valores_list]
                 elif linea == "SOAT":
                     pass  # Sin ajuste
                 else:
-                    fc_valores_list = [v * 0.995 for v in fc_valores_list]
+                    fc_valores_list = [v * 0.992 for v in fc_valores_list]
 
                 is_partial_temp = fc_result_anio['is_partial']
 
@@ -1216,11 +1216,11 @@ with tabs[1]:
             is_partial_temp = fc_result_acum['is_partial']
 
             if linea == "FIANZAS":
-                pronostico_mes_full = pronostico_mes_full * 0.975
+                pronostico_mes_full = pronostico_mes_full * 0.970
             elif linea == "SOAT":
                 pass  # Sin ajuste
             else:
-                pronostico_mes_full = pronostico_mes_full * 0.995
+                pronostico_mes_full = pronostico_mes_full * 0.992
 
             prod_meses_cerrados= df_linea[
                 (df_linea['FECHA'].dt.year == ref_year) &
@@ -1463,7 +1463,7 @@ with tabs[1]:
     proy_total = float(fc_df['Pronostico_mensual'].sum()) if not fc_df.empty else 0.0
     
     if filters['linea_plus'] == "FIANZAS":
-        proy_total = proy_total * 0.975
+        proy_total = proy_total * 0.970
     
     cierre_est = prod_total + proy_total
     
@@ -1516,15 +1516,15 @@ with tabs[1]:
         if linea_seleccionada == "FIANZAS":
             fc_sel = fc_sel.copy()
             fc_sel['Pronostico_mensual'] = fc_sel['Pronostico_mensual'] * 0.975
-            fc_sel['IC_lo'] = fc_sel['IC_lo'] * 0.975
-            fc_sel['IC_hi'] = fc_sel['IC_hi'] * 0.975
+            fc_sel['IC_lo'] = fc_sel['IC_lo'] * 0.970
+            fc_sel['IC_hi'] = fc_sel['IC_hi'] * 0.970
         elif linea_seleccionada == "SOAT":
             pass  # Sin ajuste
         else:
             fc_sel = fc_sel.copy()
             fc_sel['Pronostico_mensual'] = fc_sel['Pronostico_mensual'] * 0.995
-            fc_sel['IC_lo'] = fc_sel['IC_lo'] * 0.995
-            fc_sel['IC_hi'] = fc_sel['IC_hi'] * 0.995
+            fc_sel['IC_lo'] = fc_sel['IC_lo'] * 0.992
+            fc_sel['IC_hi'] = fc_sel['IC_hi'] * 0.992
 
         # Métricas en columnas
         col1, col2, col3, col4 = st.columns(4)
