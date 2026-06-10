@@ -177,8 +177,12 @@ def append_distribution_totals(
 
 
 def _fmt_signed_cop(value: float) -> str:
-    sign = '+' if value > 0 else '-' if value < 0 else ''
-    return f"{sign}{fmt_cop(abs(value))}" if sign else fmt_cop(0)
+    formatted = fmt_cop(abs(value))
+    if value > 0:
+        return f"+{formatted}"
+    if value < 0:
+        return f"-{formatted}"
+    return fmt_cop(0)
 
 
 def _fmt_signed_pct(value: float) -> str:
@@ -197,7 +201,7 @@ def build_distribution_html(
     ref_year: int,
 ) -> str:
     """Construye el HTML de la matriz desplegable mensual."""
-    if df_distribution.empty:
+    if df_distribution.empty or not remaining_months:
         return ""
 
     df_export = append_distribution_totals(df_distribution, remaining_months)

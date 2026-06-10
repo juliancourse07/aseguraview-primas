@@ -60,12 +60,13 @@ _HEATMAP_MIN_BLEND_RATIO = 0.2
 _HEATMAP_BLEND_RANGE = 0.8
 _DETAILED_CHART_HEIGHT = 500
 _DETAILED_FORECAST_CACHE_TTL_SECONDS = 3600
+_DATA_CACHE_MAX_ENTRIES = 50
 _INCREMENT_PCT_HIGH_THRESHOLD = 50
 _INCREMENT_PCT_MEDIUM_THRESHOLD = 25
 _MAX_DISTRIBUTION_CACHE_SIZE = 12
 
 
-def _fragment(func):
+def _fragment_compat(func):
     """Compatibilidad con Streamlit fragment sin romper entornos viejos."""
     fragment_fn = getattr(st, "fragment", None)
     return fragment_fn(func) if callable(fragment_fn) else func
@@ -532,7 +533,7 @@ def _apply_increment_pct_conditional_formatting(
         )
 
 
-@_fragment
+@_fragment_compat
 def render_deficit_heatmap_fragment(
     df_filtered: pd.DataFrame,
     df_resumen: pd.DataFrame,
@@ -582,7 +583,7 @@ def render_deficit_heatmap_fragment(
         return pivot_deficit
 
 
-@_fragment
+@_fragment_compat
 def render_faltante_heatmap_fragment(
     df_filtered: pd.DataFrame,
     vista_mes: str,
@@ -629,7 +630,7 @@ def render_faltante_heatmap_fragment(
         return pivot_faltante
 
 
-@_fragment
+@_fragment_compat
 def render_monthly_distribution_fragment(
     df_filtered: pd.DataFrame,
     df_resumen: pd.DataFrame,
@@ -701,7 +702,7 @@ st.markdown("""
 """, unsafe_allow_html=True)
 
 # ==================== LOAD DATA ====================
-@st.cache_data(ttl=3600, show_spinner=False, max_entries=50)
+@st.cache_data(ttl=3600, show_spinner=False, max_entries=_DATA_CACHE_MAX_ENTRIES)
 def load_and_process_data():
     """Carga y procesa datos con caché para reducir recargas y mejorar rendimiento."""
     df_raw = load_data()
