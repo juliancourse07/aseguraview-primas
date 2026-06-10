@@ -47,7 +47,14 @@ POSITIVE_PCT_TEXT_COLOR = '#dc2626'
 NEGATIVE_PCT_TEXT_COLOR = '#15803d'
 POSITIVE_PCT_BG = '#fef2f2'
 NEGATIVE_PCT_BG = '#dcfce7'
-MONTH_GROUP_MIN_WIDTH = 330  # 3 subcolumnas × ~110px
+MONTH_GROUP_MIN_WIDTH = 330  # 3 columnas visibles por mes × ~110px
+STICKY_COL1_WIDTH = 210
+STICKY_COL2_WIDTH = 150
+STICKY_COL3_WIDTH = 190
+STICKY_COL4_WIDTH = 210
+STICKY_COL2_LEFT = STICKY_COL1_WIDTH
+STICKY_COL3_LEFT = STICKY_COL1_WIDTH + STICKY_COL2_WIDTH
+STICKY_COL4_LEFT = STICKY_COL3_LEFT + STICKY_COL3_WIDTH
 
 
 def get_remaining_months(cutoff_month: int, meses_quarter: tuple[int, ...] | list[int]) -> tuple[int, ...]:
@@ -240,18 +247,18 @@ def build_distribution_html(
     )
 
     sticky_styles = {
-        'col1': 'position:sticky;left:0;min-width:210px;max-width:210px;background:#ffffff;z-index:5;box-shadow:2px 0 4px rgba(15,23,42,0.08);',
-        'col2': 'position:sticky;left:210px;min-width:150px;max-width:150px;background:#ffffff;z-index:5;box-shadow:2px 0 4px rgba(15,23,42,0.08);',
-        'col3': 'position:sticky;left:360px;min-width:190px;max-width:190px;background:#ffffff;z-index:5;box-shadow:2px 0 4px rgba(15,23,42,0.08);',
-        'col4': 'position:sticky;left:550px;min-width:210px;max-width:210px;background:#ffffff;z-index:5;box-shadow:2px 0 4px rgba(15,23,42,0.08);',
+        'col1': f'position:sticky;left:0;min-width:{STICKY_COL1_WIDTH}px;max-width:{STICKY_COL1_WIDTH}px;background:#ffffff;z-index:5;box-shadow:2px 0 4px rgba(15,23,42,0.08);',
+        'col2': f'position:sticky;left:{STICKY_COL2_LEFT}px;min-width:{STICKY_COL2_WIDTH}px;max-width:{STICKY_COL2_WIDTH}px;background:#ffffff;z-index:5;box-shadow:2px 0 4px rgba(15,23,42,0.08);',
+        'col3': f'position:sticky;left:{STICKY_COL3_LEFT}px;min-width:{STICKY_COL3_WIDTH}px;max-width:{STICKY_COL3_WIDTH}px;background:#ffffff;z-index:5;box-shadow:2px 0 4px rgba(15,23,42,0.08);',
+        'col4': f'position:sticky;left:{STICKY_COL4_LEFT}px;min-width:{STICKY_COL4_WIDTH}px;max-width:{STICKY_COL4_WIDTH}px;background:#ffffff;z-index:5;box-shadow:2px 0 4px rgba(15,23,42,0.08);',
         'head1': 'position:sticky;left:0;background:#1e3a5f;z-index:12;',
-        'head2': 'position:sticky;left:210px;background:#1e3a5f;z-index:12;',
-        'head3': 'position:sticky;left:360px;background:#1e3a5f;z-index:12;',
-        'head4': 'position:sticky;left:550px;background:#1e3a5f;z-index:12;',
+        'head2': f'position:sticky;left:{STICKY_COL2_LEFT}px;background:#1e3a5f;z-index:12;',
+        'head3': f'position:sticky;left:{STICKY_COL3_LEFT}px;background:#1e3a5f;z-index:12;',
+        'head4': f'position:sticky;left:{STICKY_COL4_LEFT}px;background:#1e3a5f;z-index:12;',
         'total1': 'position:sticky;left:0;background:rgba(56,189,248,0.15);z-index:9;',
-        'total2': 'position:sticky;left:210px;background:rgba(56,189,248,0.15);z-index:9;',
-        'total3': 'position:sticky;left:360px;background:rgba(56,189,248,0.15);z-index:9;',
-        'total4': 'position:sticky;left:550px;background:rgba(56,189,248,0.15);z-index:9;',
+        'total2': f'position:sticky;left:{STICKY_COL2_LEFT}px;background:rgba(56,189,248,0.15);z-index:9;',
+        'total3': f'position:sticky;left:{STICKY_COL3_LEFT}px;background:rgba(56,189,248,0.15);z-index:9;',
+        'total4': f'position:sticky;left:{STICKY_COL4_LEFT}px;background:rgba(56,189,248,0.15);z-index:9;',
     }
 
     body_rows = []
@@ -330,7 +337,7 @@ def build_distribution_html(
   <div style="background:linear-gradient(135deg, #033b63 0%, #0a5a8a 100%);padding:16px;border-radius:8px 8px 0 0;color:#fff;">
     <div style="display:flex;justify-content:space-between;gap:12px;align-items:flex-start;flex-wrap:wrap;">
       <h4 style="margin:0;font-size:18px;">📅 Distribución Mensual del Faltante Proyectado</h4>
-      <div style="font-size:12px;padding:6px 10px;background:rgba(255,255,255,0.12);border-radius:999px;">↔️ Desliza para ver todos los meses</div>
+      <div style="font-size:12px;padding:6px 10px;background:rgba(255,255,255,0.12);border-radius:999px;">↔️ Scroll horizontal disponible: desliza para ver todos los meses</div>
     </div>
     <div style="display:flex;gap:24px;flex-wrap:wrap;margin-top:12px;">
       <div>
@@ -355,7 +362,7 @@ def build_distribution_html(
       sobre su presupuesto original para compensar su parte del faltante.
     </p>
     <div style="margin-top:12px;padding:8px;background:rgba(255,255,255,0.1);border-radius:4px;font-size:12px;">
-      💡 <strong>Tip:</strong> usa la barra horizontal inferior para navegar la matriz y mantener visibles las primeras columnas.
+      <strong>Tip:</strong> usa la barra horizontal inferior para navegar la matriz y mantener visibles las primeras columnas.
     </div>
   </div>
   <div class="distribucion-container">
