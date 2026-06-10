@@ -694,9 +694,9 @@ st.markdown("""
 """, unsafe_allow_html=True)
 
 # ==================== LOAD DATA ====================
-@st.cache_data(ttl=7200, show_spinner=False, max_entries=50)
+@st.cache_data(ttl=3600, show_spinner=False, max_entries=50)
 def load_and_process_data():
-    """Carga y procesa datos - Cache de 1 hora para reducir recargas y mejorar rendimiento"""
+    """Carga y procesa datos con caché para reducir recargas y mejorar rendimiento."""
     df_raw = load_data()
     df_processed = normalize_dataframe(df_raw)
     fecha_corte = load_cutoff_date()

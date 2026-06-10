@@ -253,7 +253,7 @@ def build_distribution_html(
         ])
 
     total_deficit_fmt = total['Deficit_Total__fmt']
-    period_text = f"{period_label} {ref_year}".strip()
+    period_text = f"{period_label} {ref_year}"
 
     return f"""
 <div class="distribucion-container" style="overflow-x:auto;margin-top:20px;">
