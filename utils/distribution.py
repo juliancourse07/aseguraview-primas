@@ -4,6 +4,7 @@
 from __future__ import annotations
 
 import html
+import warnings
 
 import numpy as np
 import pandas as pd
@@ -156,14 +157,20 @@ def build_monthly_distribution(
     ).reshape(distribution_matrix.shape)
     objective_matrix = budget_matrix + distribution_matrix
 
+    original_total_year = (
+        base_result['Presupuesto_Acumulado_Anterior'].to_numpy(dtype=np.float64) +
+        budget_matrix.sum(axis=1)
+    )
+    calculated_total_year = (
+        base_result['Produccion_Acumulada_Anterior'].to_numpy(dtype=np.float64) +
+        objective_matrix.sum(axis=1)
+    )
+
     result = pd.DataFrame({
         'Suc_agrupada': base_result.index.get_level_values('Suc_agrupada'),
         'LINEA_PLUS': base_result.index.get_level_values('LINEA_PLUS'),
         'Faltante_Proyectado': faltante_totals,
-        'Presupuesto_Total_Anio': (
-            base_result['Presupuesto_Acumulado_Anterior'].to_numpy(dtype=np.float64) +
-            objective_matrix.sum(axis=1)
-        ),
+        'Presupuesto_Total_Anio': calculated_total_year,
     })
 
     for idx, month in enumerate(remaining_months):
@@ -178,6 +185,16 @@ def build_monthly_distribution(
         ascending=[False, True, True],
         kind='mergesort',
     ).reset_index(drop=True)
+    if not np.allclose(calculated_total_year, original_total_year, atol=0.01, rtol=0.0):
+        mismatch_count = int((~np.isclose(calculated_total_year, original_total_year, atol=0.01, rtol=0.0)).sum())
+        warnings.warn(
+            (
+                "Presupuesto_Total_Anio no coincide con el presupuesto fijado anual "
+                f"en {mismatch_count} fila(s) de la distribución mensual."
+            ),
+            RuntimeWarning,
+            stacklevel=2,
+        )
     return result, remaining_months
 
 
@@ -298,16 +315,143 @@ def build_distribution_html(
         ])
 
     total_faltante_fmt = total['Faltante_Proyectado__fmt']
+    total_presupuesto_anio_fmt = total['Presupuesto_Total_Anio__fmt']
     period_text = f"{MONTH_HEADER[remaining_months[0]].title()} - {MONTH_HEADER[remaining_months[-1]].title()} {ref_year}"
     accumulated_label = _accumulated_period_label(ref_year, cutoff_date)
+    script = """
+<script>
+(() => {
+  const topScroll = document.getElementById('distribution-top-scroll');
+  const topScrollContent = document.getElementById('distribution-top-scroll-content');
+  const tableContainer = document.getElementById('distribution-table-container');
+  const dataTable = document.getElementById('distribution-data-table');
+  const scrollLeftBtn = document.getElementById('distribution-scroll-left');
+  const scrollRightBtn = document.getElementById('distribution-scroll-right');
+
+  if (!topScroll || !topScrollContent || !tableContainer || !dataTable || !scrollLeftBtn || !scrollRightBtn) {
+   return;
+  }
+
+  let syncingFromTop = false;
+  let syncingFromBottom = false;
+
+  const updateButtonStates = () => {
+   const maxScroll = Math.max(tableContainer.scrollWidth - tableContainer.clientWidth, 0);
+   const atStart = tableContainer.scrollLeft <= 1;
+   const atEnd = tableContainer.scrollLeft >= maxScroll - 1;
+   scrollLeftBtn.disabled = atStart;
+   scrollRightBtn.disabled = atEnd;
+  };
+
+  const syncTopWidth = () => {
+   topScrollContent.style.width = `${dataTable.scrollWidth}px`;
+   topScroll.scrollLeft = tableContainer.scrollLeft;
+   updateButtonStates();
+  };
+
+  topScroll.addEventListener('scroll', () => {
+   if (syncingFromBottom) {
+     return;
+   }
+   syncingFromTop = true;
+   tableContainer.scrollLeft = topScroll.scrollLeft;
+   updateButtonStates();
+   requestAnimationFrame(() => {
+     syncingFromTop = false;
+   });
+  });
+
+  tableContainer.addEventListener('scroll', () => {
+   if (syncingFromTop) {
+     return;
+   }
+   syncingFromBottom = true;
+   topScroll.scrollLeft = tableContainer.scrollLeft;
+   updateButtonStates();
+   requestAnimationFrame(() => {
+     syncingFromBottom = false;
+   });
+  });
+
+  const scrollStep = () => Math.max(280, Math.round(tableContainer.clientWidth * 0.55));
+
+  scrollLeftBtn.addEventListener('click', () => {
+   tableContainer.scrollBy({ left: -scrollStep(), behavior: 'smooth' });
+  });
+
+  scrollRightBtn.addEventListener('click', () => {
+   tableContainer.scrollBy({ left: scrollStep(), behavior: 'smooth' });
+  });
+
+  window.addEventListener('resize', syncTopWidth);
+  syncTopWidth();
+})();
+</script>
+"""
 
     return f"""
 <style>
+.distribucion-wrapper {{
+  margin-top: 20px;
+}}
+.distribution-navigation-controls {{
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  gap: 12px;
+  padding: 10px 16px;
+  background: rgba(255,255,255,0.12);
+  border: 1px solid rgba(255,255,255,0.18);
+  border-radius: 8px;
+  margin-top: 14px;
+  flex-wrap: wrap;
+}}
+.distribution-nav-btn {{
+  background: rgba(255,255,255,0.2);
+  border: 1px solid rgba(255,255,255,0.3);
+  color: #fff;
+  padding: 8px 16px;
+  border-radius: 6px;
+  cursor: pointer;
+  font-size: 14px;
+  font-weight: 600;
+  transition: background 0.2s ease, opacity 0.2s ease;
+}}
+.distribution-nav-btn:hover:not(:disabled) {{
+  background: rgba(255,255,255,0.3);
+}}
+.distribution-nav-btn:disabled {{
+  opacity: 0.5;
+  cursor: not-allowed;
+}}
+.distribution-top-scroll {{
+  overflow-x: auto;
+  overflow-y: hidden;
+  height: 18px;
+  margin-top: 12px;
+  border: 1px solid rgba(148,163,184,0.35);
+  border-radius: 999px;
+  background: #e2e8f0;
+  scrollbar-width: thin;
+  scrollbar-color: #38bdf8 #e2e8f0;
+}}
+.distribution-top-scroll::-webkit-scrollbar {{
+  height: 12px;
+  background-color: #e2e8f0;
+  border-radius: 999px;
+}}
+.distribution-top-scroll::-webkit-scrollbar-thumb {{
+  background: linear-gradient(90deg, #38bdf8, #0284c7);
+  border-radius: 999px;
+}}
+.distribution-top-scroll-content {{
+  height: 1px;
+}}
 .distribucion-container {{
   overflow-x: auto;
   overflow-y: visible;
   max-width: 100%;
-  margin-top: 20px;
+  margin-top: 10px;
   border: 1px solid #e2e8f0;
   border-radius: 8px;
   box-shadow: 0 1px 3px rgba(0,0,0,0.1);
@@ -333,11 +477,11 @@ def build_distribution_html(
   border-radius: 6px;
 }}
 </style>
-<div style="margin-top:20px;">
+<div class="distribucion-wrapper">
   <div style="background:linear-gradient(135deg, #033b63 0%, #0a5a8a 100%);padding:16px;border-radius:8px 8px 0 0;color:#fff;">
     <div style="display:flex;justify-content:space-between;gap:12px;align-items:flex-start;flex-wrap:wrap;">
       <h4 style="margin:0;font-size:18px;">📅 Distribución Mensual del Faltante Proyectado</h4>
-      <div style="font-size:12px;padding:6px 10px;background:rgba(255,255,255,0.12);border-radius:999px;">↔️ Scroll horizontal disponible: desliza para ver todos los meses</div>
+      <div style="font-size:12px;padding:6px 10px;background:rgba(255,255,255,0.12);border-radius:999px;">↔️ Scroll horizontal disponible arriba y abajo</div>
     </div>
     <div style="display:flex;gap:24px;flex-wrap:wrap;margin-top:12px;">
       <div>
@@ -350,6 +494,11 @@ def build_distribution_html(
         <div style="font-size:16px;font-weight:600;">{html.escape(period_text)}</div>
       </div>
       <div>
+        <div style="font-size:12px;opacity:0.8;">Presupuesto Total Año</div>
+        <div style="font-size:16px;font-weight:600;">{total_presupuesto_anio_fmt}</div>
+        <div style="font-size:11px;opacity:0.7;">(Producción real acumulada + nuevos objetivos)</div>
+      </div>
+      <div>
         <div style="font-size:12px;opacity:0.8;">Meses Restantes</div>
         <div style="font-size:16px;font-weight:600;">{len(remaining_months)} meses</div>
       </div>
@@ -357,22 +506,29 @@ def build_distribution_html(
     <p style="font-size:13px;margin:12px 0 0 0;opacity:0.9;line-height:1.5;">
       ℹ️ El <strong>Faltante Proyectado</strong> es la diferencia entre el presupuesto y la producción real
       acumulada hasta el mes anterior al corte.
+      El <strong>Presupuesto Total Año</strong> suma esa producción real acumulada más los nuevos objetivos
+      del período mostrado, por lo que debe coincidir con el presupuesto fijado del año.
       Se distribuye proporcionalmente en los meses visibles según el peso del presupuesto mensual.
       El <strong>Incremento %</strong> indica cuánto más debe producir cada sucursal/línea
       sobre su presupuesto original para compensar su parte del faltante.
     </p>
-    <div style="margin-top:12px;padding:8px;background:rgba(255,255,255,0.1);border-radius:4px;font-size:12px;">
-      <strong>Tip:</strong> usa la barra horizontal inferior para navegar la matriz y mantener visibles las primeras columnas.
+    <div class="distribution-navigation-controls">
+      <button id="distribution-scroll-left" class="distribution-nav-btn" type="button">← Anterior</button>
+      <div style="font-size:13px;opacity:0.92;text-align:center;flex:1 1 220px;">💡 Usa los botones o cualquiera de las barras para navegar horizontalmente</div>
+      <button id="distribution-scroll-right" class="distribution-nav-btn" type="button">Siguiente →</button>
+    </div>
+    <div id="distribution-top-scroll" class="distribution-top-scroll">
+      <div id="distribution-top-scroll-content" class="distribution-top-scroll-content"></div>
     </div>
   </div>
-  <div class="distribucion-container">
-  <table style="width:max-content;min-width:100%;border-collapse:separate;border-spacing:0;font-size:12px;background:#fff;">
+  <div id="distribution-table-container" class="distribucion-container">
+  <table id="distribution-data-table" style="width:max-content;min-width:100%;border-collapse:separate;border-spacing:0;font-size:12px;background:#fff;">
     <thead>
       <tr style="background:#1e3a5f;color:#fff;">
         <th rowspan="2" style="padding:12px;border:1px solid #2d5a7f;min-width:210px;{sticky_styles["head1"]}">Sucursal</th>
         <th rowspan="2" style="padding:12px;border:1px solid #2d5a7f;min-width:150px;{sticky_styles["head2"]}">Línea</th>
         <th rowspan="2" style="padding:12px;border:1px solid #2d5a7f;min-width:190px;{sticky_styles["head3"]}">Faltante<br/>Proyectado</th>
-        <th rowspan="2" style="padding:12px;border:1px solid #2d5a7f;min-width:210px;{sticky_styles["head4"]}">Presupuesto<br/>Total Año</th>
+        <th rowspan="2" title="Suma de la producción real acumulada hasta el mes anterior al corte más los nuevos objetivos del período mostrado. Debe igualar el presupuesto fijado del año." style="padding:12px;border:1px solid #2d5a7f;min-width:210px;{sticky_styles["head4"]}">Presupuesto<br/>Total Año <span style="font-size:10px;opacity:0.7;">ⓘ</span></th>
         {header_months}
       </tr>
       <tr style="background:#1e3a5f;color:#fff;">{header_metrics}</tr>
@@ -390,11 +546,12 @@ def build_distribution_html(
       <div><strong>💰 Presup. Original:</strong> Presupuesto inicial del mes</div>
       <div><strong>🎯 Objetivo Nuevo:</strong> Presupuesto original más la porción del faltante distribuido</div>
       <div><strong>📈 Incremento %:</strong> Porcentaje adicional requerido</div>
-      <div><strong>✅ Presupuesto Total Año:</strong> Presupuesto acumulado hasta el corte anterior + nuevos objetivos del período mostrado</div>
+      <div><strong>✅ Presupuesto Total Año:</strong> Producción real acumulada hasta el corte anterior + nuevos objetivos del período mostrado</div>
     </div>
     <div style="margin-top:12px;padding:10px;background:#fff3cd;border-left:4px solid #ffc107;border-radius:4px;">
       <strong>⚠️ Interpretación:</strong> Un <strong>Incremento %</strong> positivo indica cuánto más debe producirse sobre el presupuesto original del mes.
     </div>
   </div>
 </div>
+{script}
 """

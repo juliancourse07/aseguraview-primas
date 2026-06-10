@@ -7,6 +7,7 @@ import warnings
 warnings.filterwarnings("ignore")
 
 import streamlit as st
+import streamlit.components.v1 as components
 import pandas as pd
 import numpy as np
 import html
@@ -674,9 +675,10 @@ def render_monthly_distribution_fragment(
                 ref_year=ref_year,
                 cutoff_date=fecha_corte,
             )
-        st.markdown(html_table, unsafe_allow_html=True)
+        component_height = min(max(520, 280 + (len(df_distribution) + 1) * 34), 1100)
+        components.html(html_table, height=component_height, scrolling=True)
         st.caption(
-            "✅ Validación: Presupuesto Total Año = presupuesto acumulado hasta el mes anterior "
+            "✅ Validación: Presupuesto Total Año = producción real acumulada hasta el mes anterior "
             "+ nuevos objetivos distribuidos en los meses mostrados."
         )
         return df_distribution, remaining_months
