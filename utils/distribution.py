@@ -56,6 +56,9 @@ STICKY_COL4_WIDTH = 210
 STICKY_COL2_LEFT = STICKY_COL1_WIDTH
 STICKY_COL3_LEFT = STICKY_COL1_WIDTH + STICKY_COL2_WIDTH
 STICKY_COL4_LEFT = STICKY_COL3_LEFT + STICKY_COL3_WIDTH
+TOTAL_VALIDATION_ATOL = 0.01
+TOP_NAV_SCROLL_MIN_STEP = 280
+TOP_NAV_SCROLL_STEP_RATIO = 0.55
 
 
 def get_remaining_months(cutoff_month: int, meses_quarter: tuple[int, ...] | list[int]) -> tuple[int, ...]:
@@ -185,8 +188,14 @@ def build_monthly_distribution(
         ascending=[False, True, True],
         kind='mergesort',
     ).reset_index(drop=True)
-    if not np.allclose(calculated_total_year, original_total_year, atol=0.01, rtol=0.0):
-        mismatch_count = int((~np.isclose(calculated_total_year, original_total_year, atol=0.01, rtol=0.0)).sum())
+    matches_original_total = np.isclose(
+        calculated_total_year,
+        original_total_year,
+        atol=TOTAL_VALIDATION_ATOL,
+        rtol=0.0,
+    )
+    if not matches_original_total.all():
+        mismatch_count = int((~matches_original_total).sum())
         warnings.warn(
             (
                 "Presupuesto_Total_Anio no coincide con el presupuesto fijado anual "
@@ -318,6 +327,10 @@ def build_distribution_html(
     total_presupuesto_anio_fmt = total['Presupuesto_Total_Anio__fmt']
     period_text = f"{MONTH_HEADER[remaining_months[0]].title()} - {MONTH_HEADER[remaining_months[-1]].title()} {ref_year}"
     accumulated_label = _accumulated_period_label(ref_year, cutoff_date)
+    scroll_step_expression = (
+        f"Math.max({TOP_NAV_SCROLL_MIN_STEP}, "
+        f"Math.round(tableContainer.clientWidth * {TOP_NAV_SCROLL_STEP_RATIO}))"
+    )
     script = """
 <script>
 (() => {
@@ -373,7 +386,7 @@ def build_distribution_html(
    });
   });
 
-  const scrollStep = () => Math.max(280, Math.round(tableContainer.clientWidth * 0.55));
+  const scrollStep = () => __SCROLL_STEP_EXPRESSION__;
 
   scrollLeftBtn.addEventListener('click', () => {
    tableContainer.scrollBy({ left: -scrollStep(), behavior: 'smooth' });
@@ -387,7 +400,7 @@ def build_distribution_html(
   syncTopWidth();
 })();
 </script>
-"""
+""".replace("__SCROLL_STEP_EXPRESSION__", scroll_step_expression)
 
     return f"""
 <style>
