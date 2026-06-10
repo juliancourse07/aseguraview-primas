@@ -187,6 +187,7 @@ def build_monthly_distribution(
         by='Presupuesto_Total_Anio',
         ascending=False,
         na_position='last',
+        kind='mergesort',
     ).reset_index(drop=True)
     matches_original_total = np.isclose(
         calculated_total_year,
