@@ -184,9 +184,9 @@ def build_monthly_distribution(
         result[f'{prefix}_Incremento_Pct'] = increment_pct_matrix[:, idx]
 
     result = result.sort_values(
-        by=['Faltante_Proyectado', 'Suc_agrupada', 'LINEA_PLUS'],
-        ascending=[False, True, True],
-        kind='mergesort',
+        by='Presupuesto_Total_Anio',
+        ascending=False,
+        na_position='last',
     ).reset_index(drop=True)
     matches_original_total = np.isclose(
         calculated_total_year,
