@@ -48,6 +48,10 @@ from componentes.sidebar import render_sidebar
 from componentes.tables import df_to_html
 from componentes.charts import render_forecast_chart
 
+# Chatbot
+from chatbot.chat_ui import render_chat_button, render_chat_toggle_button, render_chat_panel
+from chatbot.chat_logic import build_context
+
 # ==================== CONSTANTS ====================
 # Indicadores visuales para el gráfico de ritmo comercial por sucursal
 _INDICADOR_BUEN_RITMO = "🐰⚡"   # cumplimiento_ritmo >= 90%
@@ -695,6 +699,9 @@ st.markdown("""
 <style>:root{--bg:#f8fafc;--fg:#1e293b;--accent:#0284c7;--muted:#64748b;--card:#ffffff;--border:#e2e8f0;--up:#16a34a;--down:#ef4444;--near:#f59e0b;}body,.stApp{background:var(--bg);color:var(--fg);}.block-container{padding-top:.6rem;}.card{background:var(--card);border:1px solid var(--border);border-radius:12px;padding:12px;margin-bottom:12px;box-shadow:0 1px 3px rgba(0,0,0,0.1);}.table-wrap{overflow:auto;border:1px solid var(--border);border-radius:12px;background:var(--card);padding:6px;}.tbl{width:100%;border-collapse:collapse;font-size:14px;color:var(--fg);}.tbl thead th{position:sticky;top:0;background:#f1f5f9;color:#334155;padding:10px;border-bottom:2px solid var(--border);text-align:left;}.tbl td{padding:8px;border-bottom:1px dashed var(--border);white-space:nowrap;color:var(--fg);}.bad{color:var(--down);font-weight:700;}.ok{color:var(--up);font-weight:700;}.near{color:var(--near);font-weight:700;}.muted{color:var(--muted);}.small{font-size:12px;color:var(--muted);}.heatmap-shell{border:1px solid var(--border);border-radius:18px;overflow:hidden;background:linear-gradient(180deg,#fff,#f8fafc);box-shadow:0 4px 14px rgba(15,23,42,0.08);}.heatmap-banner{display:flex;justify-content:space-between;align-items:center;gap:12px;padding:14px 18px;background:linear-gradient(90deg,rgba(2,132,199,0.10),rgba(248,250,252,0.95) 65%,rgba(245,158,11,0.08));border-bottom:1px solid var(--border);}.heatmap-title{font-size:15px;font-weight:700;color:#0f172a;}.heatmap-legend{font-size:12px;color:#475569;text-align:right;}.heatmap-grid{display:grid;align-items:stretch;}.heatmap-total-label,.heatmap-total-cell,.heatmap-corner-label,.heatmap-col-head,.heatmap-row-label,.heatmap-cell{position:relative;display:flex;align-items:center;justify-content:center;min-height:64px;padding:10px 12px;text-align:center;border-right:1px solid var(--border);border-bottom:1px solid var(--border);}.heatmap-total-label,.heatmap-corner-label,.heatmap-row-label{justify-content:flex-start;}.heatmap-total-label{font-weight:800;color:#0f172a;background:linear-gradient(135deg,rgba(2,132,199,0.12),rgba(148,163,184,0.10));}.heatmap-total-cell{flex-direction:column;gap:4px;}.heatmap-total-caption{font-size:11px;letter-spacing:.08em;text-transform:uppercase;opacity:.75;color:#475569;}.heatmap-total-value{font-size:17px;font-weight:800;line-height:1.1;}.heatmap-corner-label{font-size:12px;font-weight:700;letter-spacing:.08em;text-transform:uppercase;color:#475569;background:#f8fafc;}.heatmap-col-head{min-height:56px;background:#f1f5f9;color:#0f172a;font-size:12px;font-weight:700;letter-spacing:.08em;text-transform:uppercase;}.heatmap-row-label{font-size:13px;font-weight:600;color:#0f172a;background:#f8fafc;}.heatmap-cell{font-size:13px;font-weight:700;}.heatmap-cell-positive,.heatmap-total-positive{z-index:0;}.heatmap-cell-positive::after,.heatmap-total-positive::after{content:"";position:absolute;inset:8px;border-radius:12px;border:1px solid rgba(239,68,68,0.34);animation:heatPulse 1.35s ease-in-out infinite;pointer-events:none;}.heatmap-note{padding:12px 16px;font-size:12px;color:#475569;background:rgba(241,245,249,0.85);}@keyframes heatPulse{0%,100%{transform:scale(1);opacity:.22;box-shadow:0 0 0 0 rgba(239,68,68,0);}45%{transform:scale(1.03);opacity:.58;box-shadow:0 0 0 8px rgba(239,68,68,0.10);}75%{transform:scale(1.01);opacity:.34;box-shadow:0 0 0 3px rgba(239,68,68,0.16);}}@media (prefers-reduced-motion: reduce){.heatmap-cell-positive::after,.heatmap-total-positive::after{animation:none;opacity:.35;box-shadow:0 0 0 2px rgba(239,68,68,0.12);}}</style>
 """, unsafe_allow_html=True)
 
+# Inyectar CSS del chatbot
+render_chat_button()
+
 # ==================== LOAD DATA ====================
 @st.cache_data(ttl=3600, show_spinner=False, max_entries=_DATA_CACHE_MAX_ENTRIES)
 def load_and_process_data():
@@ -1133,6 +1140,7 @@ st.caption("Nowcast, cierre estimado del año, ejecución vs presupuesto y propu
 
 # ==================== SIDEBAR ====================
 filters = render_sidebar(df, fecha_corte)
+render_chat_toggle_button()
 
 if 'distribucion_cache' not in st.session_state:
     st.session_state.distribucion_cache = {}
@@ -2012,6 +2020,22 @@ with tabs[2]:
             st.dataframe(fc_display_f[['FECHA', 'Pronóstico Mensual', 'Pronóstico Ajustado Garantías', 'Diferencia']], 
                         use_container_width=True, hide_index=True)
 
+            # ── Gráfico de pronóstico FIANZAS ajustado ──────────────────────
+            st.markdown("#### 📉 Gráfico — Pronóstico FIANZAS vs Ajuste Garantías")
+            fc_chart_f = fc_f[['FECHA', 'Pronostico_ajustado_garantias', 'IC_lo', 'IC_hi']].rename(
+                columns={'Pronostico_ajustado_garantias': 'Pronostico_mensual'}
+            )
+            fig_fianzas = render_forecast_chart(
+                hist_f,
+                fc_chart_f,
+                title="Pronóstico FIANZAS 2026 — Ajuste Ley de Garantías",
+            )
+            st.plotly_chart(fig_fianzas, use_container_width=True)
+            st.caption(
+                "🟡 Histórico real | 🔶 Pronóstico ajustado por Ley de Garantías — "
+                "refleja la restricción de licitaciones públicas durante el período electoral"
+            )
+
 # ========== TAB 4: PRESUPUESTO 2026 ==========
 with tabs[3]:
     st.subheader("📊 Propuesta Presupuesto 2026")
@@ -2056,3 +2080,55 @@ with tabs[3]:
                 )
             else:
                 st.warning("No se pudo generar presupuesto con los filtros actuales")
+
+# ==================== CHATBOT PANEL ====================
+if st.session_state.get('chat_open', False):
+    _periodo_chat = pd.Timestamp(year=fecha_corte.year, month=fecha_corte.month, day=1)
+    _ref_year_chat = filters['anio_analisis']
+
+    _produccion_parcial_chat = 0.0
+    _presupuesto_mensual_chat = 0.0
+    _acumulado_anio_chat = 0.0
+    _presupuesto_anual_chat = 0.0
+
+    if not df_filtered.empty and 'IMP_PRIMA' in df_filtered.columns:
+        _produccion_parcial_chat = float(
+            df_filtered[df_filtered['FECHA'] == _periodo_chat]['IMP_PRIMA'].sum()
+        )
+        _acumulado_anio_chat = float(
+            df_filtered[df_filtered['FECHA'].dt.year == _ref_year_chat]['IMP_PRIMA'].sum()
+        )
+
+    if not df_filtered.empty and 'PRESUPUESTO' in df_filtered.columns:
+        _presupuesto_mensual_chat = float(
+            df_filtered[df_filtered['FECHA'] == _periodo_chat]['PRESUPUESTO'].sum()
+        )
+        _presupuesto_anual_chat = float(
+            df_filtered[df_filtered['FECHA'].dt.year == _ref_year_chat]['PRESUPUESTO'].sum()
+        )
+
+    _ultimo_dia_chat = _periodo_chat + pd.offsets.MonthEnd(0)
+    _dias_totales_chat = business_days_left(_periodo_chat, _ultimo_dia_chat)
+    _dias_transcurridos_chat = business_days_left(_periodo_chat, fecha_corte)
+
+    # Pronóstico del mes actual (primer valor del fc_df global si está disponible)
+    _forecast_mensual_chat = 0.0
+    try:
+        if not fc_df.empty and 'Pronostico_mensual' in fc_df.columns:
+            _forecast_mensual_chat = float(fc_df['Pronostico_mensual'].iloc[0])
+    except Exception:
+        pass
+
+    system_prompt = build_context(
+        fecha_corte=fecha_corte,
+        filters=filters,
+        df_filtered=df_filtered,
+        forecast_mensual=_forecast_mensual_chat,
+        produccion_parcial=_produccion_parcial_chat,
+        presupuesto_mensual=_presupuesto_mensual_chat,
+        acumulado_anio=_acumulado_anio_chat,
+        presupuesto_anual=_presupuesto_anual_chat,
+        dias_transcurridos=_dias_transcurridos_chat,
+        dias_totales=_dias_totales_chat,
+    )
+    render_chat_panel(system_prompt)
