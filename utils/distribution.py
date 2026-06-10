@@ -48,7 +48,7 @@ POSITIVE_PCT_TEXT_COLOR = '#dc2626'
 NEGATIVE_PCT_TEXT_COLOR = '#15803d'
 POSITIVE_PCT_BG = '#fef2f2'
 NEGATIVE_PCT_BG = '#dcfce7'
-MONTH_GROUP_MIN_WIDTH = 270  # 3 columnas visibles por mes × 90px
+MONTH_GROUP_MIN_WIDTH = 340  # 4 columnas visibles por mes × 85px
 STICKY_COL1_WIDTH = 140
 STICKY_COL2_WIDTH = 110
 STICKY_COL3_WIDTH = 150
@@ -181,6 +181,7 @@ def build_monthly_distribution(
         monthly_budget_values = budget_matrix[:, idx]
         result[f'{prefix}_Presup_Original'] = monthly_budget_values
         result[f'{prefix}_Objetivo_Nuevo'] = objective_matrix[:, idx]
+        result[f'{prefix}_Deuda'] = objective_matrix[:, idx] - monthly_budget_values
         result[f'{prefix}_Incremento_Pct'] = increment_pct_matrix[:, idx]
 
     result = result.sort_values(
@@ -229,6 +230,7 @@ def append_distribution_totals(
         objetivo_total = float(df_distribution[f'{prefix}_Objetivo_Nuevo'].sum())
         total_row[f'{prefix}_Presup_Original'] = budget_total
         total_row[f'{prefix}_Objetivo_Nuevo'] = objetivo_total
+        total_row[f'{prefix}_Deuda'] = objetivo_total - budget_total
         total_row[f'{prefix}_Incremento_Pct'] = _safe_increment_pct(objetivo_total - budget_total, budget_total)
 
     return pd.concat([df_distribution, pd.DataFrame([total_row])], ignore_index=True)
@@ -253,7 +255,7 @@ def build_distribution_html(
         return ""
 
     df_export = append_distribution_totals(df_distribution, remaining_months)
-    value_suffixes = ('Faltante_Proyectado', 'Presupuesto_Total_Anio', 'Presup_Original', 'Objetivo_Nuevo')
+    value_suffixes = ('Faltante_Proyectado', 'Presupuesto_Total_Anio', 'Presup_Original', 'Objetivo_Nuevo', 'Deuda')
     for col in df_export.columns:
         if col.endswith(value_suffixes):
             df_export[f'{col}__fmt'] = df_export[col].map(fmt_cop)
@@ -261,14 +263,15 @@ def build_distribution_html(
             df_export[f'{col}__fmt'] = df_export[col].map(_fmt_signed_pct)
 
     header_months = ''.join(
-        f'<th colspan="3" style="padding:12px;border:1px solid #2d5a7f;background:#0a5a8a;min-width:{MONTH_GROUP_MIN_WIDTH}px;">{MONTH_HEADER[month]}</th>'
+        f'<th colspan="4" style="padding:12px;border:1px solid #2d5a7f;background:#0a5a8a;min-width:{MONTH_GROUP_MIN_WIDTH}px;">{MONTH_HEADER[month]}</th>'
         for month in remaining_months
     )
     header_metrics = ''.join(
         (
-            '<th style="padding:8px;border:1px solid #2d5a7f;font-size:11px;min-width:90px;max-width:90px;">Presup.<br/>Original</th>'
-            '<th style="padding:8px;border:1px solid #2d5a7f;font-size:11px;min-width:90px;max-width:90px;">Objetivo<br/>Nuevo</th>'
-            '<th style="padding:8px;border:1px solid #2d5a7f;font-size:11px;min-width:90px;max-width:90px;">Increm.<br/>%</th>'
+            '<th style="padding:8px;border:1px solid #2d5a7f;font-size:11px;min-width:85px;max-width:85px;">Presup.<br/>Original</th>'
+            '<th style="padding:8px;border:1px solid #2d5a7f;font-size:11px;min-width:85px;max-width:85px;">Objetivo<br/>Nuevo</th>'
+            '<th style="padding:8px;border:1px solid #2d5a7f;font-size:11px;min-width:85px;max-width:85px;background:#7f1d1d;color:#ffffff;">Deuda<br/>$</th>'
+            '<th style="padding:8px;border:1px solid #2d5a7f;font-size:11px;min-width:85px;max-width:85px;">Increm.<br/>%</th>'
         )
         for _month in remaining_months
     )
@@ -303,9 +306,10 @@ def build_distribution_html(
             pct_color = POSITIVE_PCT_TEXT_COLOR if increment_pct >= 0 else NEGATIVE_PCT_TEXT_COLOR
             pct_bg = POSITIVE_PCT_BG if increment_pct >= 0 else NEGATIVE_PCT_BG
             row_cells.extend([
-                f'<td style="padding:6px 4px;border:1px solid #e2e8f0;text-align:right;min-width:90px;max-width:90px;font-size:11px;">{row[f"{prefix}_Presup_Original__fmt"]}</td>',
-                f'<td style="padding:6px 4px;border:1px solid #e2e8f0;text-align:right;font-weight:600;background:#dbeafe;min-width:90px;max-width:90px;font-size:11px;">{row[f"{prefix}_Objetivo_Nuevo__fmt"]}</td>',
-                f'<td style="padding:6px 4px;border:1px solid #e2e8f0;text-align:right;color:{pct_color};font-weight:700;background:{pct_bg};min-width:90px;max-width:90px;font-size:11px;">{row[f"{prefix}_Incremento_Pct__fmt"]}</td>',
+                f'<td style="padding:6px 4px;border:1px solid #e2e8f0;text-align:right;min-width:85px;max-width:85px;font-size:11px;">{row[f"{prefix}_Presup_Original__fmt"]}</td>',
+                f'<td style="padding:6px 4px;border:1px solid #e2e8f0;text-align:right;font-weight:600;background:#dbeafe;min-width:85px;max-width:85px;font-size:11px;">{row[f"{prefix}_Objetivo_Nuevo__fmt"]}</td>',
+                f'<td style="padding:6px 4px;border:1px solid #e2e8f0;text-align:right;font-weight:600;background:#fee2e2;color:#dc2626;min-width:85px;max-width:85px;font-size:11px;">{row[f"{prefix}_Deuda__fmt"]}</td>',
+                f'<td style="padding:6px 4px;border:1px solid #e2e8f0;text-align:right;color:{pct_color};font-weight:700;background:{pct_bg};min-width:85px;max-width:85px;font-size:11px;">{row[f"{prefix}_Incremento_Pct__fmt"]}</td>',
             ])
         body_rows.append(f'<tr style="border-bottom:1px solid #e2e8f0;">{"".join(row_cells)}</tr>')
 
@@ -319,9 +323,10 @@ def build_distribution_html(
     for month in remaining_months:
         prefix = MONTH_ABBR[month]
         total_cells.extend([
-            f'<td style="padding:6px 4px;border:1px solid #38bdf8;text-align:right;min-width:90px;max-width:90px;font-size:11px;">{total[f"{prefix}_Presup_Original__fmt"]}</td>',
-            f'<td style="padding:6px 4px;border:1px solid #38bdf8;text-align:right;min-width:90px;max-width:90px;font-size:11px;">{total[f"{prefix}_Objetivo_Nuevo__fmt"]}</td>',
-            f'<td style="padding:6px 4px;border:1px solid #38bdf8;text-align:right;color:#dc2626;min-width:90px;max-width:90px;font-size:11px;">{total[f"{prefix}_Incremento_Pct__fmt"]}</td>',
+            f'<td style="padding:6px 4px;border:1px solid #38bdf8;text-align:right;min-width:85px;max-width:85px;font-size:11px;">{total[f"{prefix}_Presup_Original__fmt"]}</td>',
+            f'<td style="padding:6px 4px;border:1px solid #38bdf8;text-align:right;min-width:85px;max-width:85px;font-size:11px;">{total[f"{prefix}_Objetivo_Nuevo__fmt"]}</td>',
+            f'<td style="padding:6px 4px;border:1px solid #38bdf8;text-align:right;font-weight:700;background:#fee2e2;color:#dc2626;min-width:85px;max-width:85px;font-size:11px;">{total[f"{prefix}_Deuda__fmt"]}</td>',
+            f'<td style="padding:6px 4px;border:1px solid #38bdf8;text-align:right;color:#dc2626;min-width:85px;max-width:85px;font-size:11px;">{total[f"{prefix}_Incremento_Pct__fmt"]}</td>',
         ])
 
     total_faltante_fmt = total['Faltante_Proyectado__fmt']
@@ -541,7 +546,7 @@ def build_distribution_html(
       <tr style="background:#1e3a5f;color:#fff;">
         <th rowspan="2" style="padding:12px;border:1px solid #2d5a7f;min-width:140px;{sticky_styles["head1"]}">Sucursal</th>
         <th rowspan="2" style="padding:12px;border:1px solid #2d5a7f;min-width:110px;{sticky_styles["head2"]}">Línea</th>
-        <th rowspan="2" style="padding:12px;border:1px solid #2d5a7f;min-width:150px;{sticky_styles["head3"]}">Faltante<br/>Proyectado</th>
+        <th rowspan="2" style="padding:12px;border:1px solid #2d5a7f;min-width:150px;{sticky_styles["head3"]}"><div style="font-weight:700;font-size:14px;">Deuda</div><div style="font-size:11px;opacity:0.8;font-weight:400;">(Faltante Proy.)</div></th>
         <th rowspan="2" title="Suma de la producción real acumulada hasta el mes anterior al corte más los nuevos objetivos del período mostrado. Debe igualar el presupuesto fijado del año." style="padding:12px;border:1px solid #2d5a7f;min-width:150px;{sticky_styles["head4"]}">Presupuesto<br/>Total Año <span style="font-size:10px;opacity:0.7;">ⓘ</span></th>
         {header_months}
       </tr>
@@ -559,6 +564,7 @@ def build_distribution_html(
     <div style="display:grid;grid-template-columns:repeat(auto-fit,minmax(250px,1fr));gap:12px;font-size:12px;line-height:1.6;">
       <div><strong>💰 Presup. Original:</strong> Presupuesto inicial del mes</div>
       <div><strong>🎯 Objetivo Nuevo:</strong> Presupuesto original más la porción del faltante distribuido</div>
+      <div><strong>🔴 Deuda $:</strong> Valor absoluto a recuperar por mes (Objetivo Nuevo − Presup. Original)</div>
       <div><strong>📈 Incremento %:</strong> Porcentaje adicional requerido</div>
       <div><strong>✅ Presupuesto Total Año:</strong> Producción real acumulada hasta el corte anterior + nuevos objetivos del período mostrado</div>
     </div>
