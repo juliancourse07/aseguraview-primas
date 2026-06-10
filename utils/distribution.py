@@ -48,11 +48,11 @@ POSITIVE_PCT_TEXT_COLOR = '#dc2626'
 NEGATIVE_PCT_TEXT_COLOR = '#15803d'
 POSITIVE_PCT_BG = '#fef2f2'
 NEGATIVE_PCT_BG = '#dcfce7'
-MONTH_GROUP_MIN_WIDTH = 330  # 3 columnas visibles por mes × ~110px
-STICKY_COL1_WIDTH = 210
-STICKY_COL2_WIDTH = 150
-STICKY_COL3_WIDTH = 190
-STICKY_COL4_WIDTH = 210
+MONTH_GROUP_MIN_WIDTH = 270  # 3 columnas visibles por mes × 90px
+STICKY_COL1_WIDTH = 140
+STICKY_COL2_WIDTH = 110
+STICKY_COL3_WIDTH = 150
+STICKY_COL4_WIDTH = 150
 STICKY_COL2_LEFT = STICKY_COL1_WIDTH
 STICKY_COL3_LEFT = STICKY_COL1_WIDTH + STICKY_COL2_WIDTH
 STICKY_COL4_LEFT = STICKY_COL3_LEFT + STICKY_COL3_WIDTH
@@ -184,8 +184,8 @@ def build_monthly_distribution(
         result[f'{prefix}_Incremento_Pct'] = increment_pct_matrix[:, idx]
 
     result = result.sort_values(
-        by='Presupuesto_Total_Anio',
-        ascending=False,
+        by=['Suc_agrupada', 'Presupuesto_Total_Anio'],
+        ascending=[True, False],
         na_position='last',
         kind='mergesort',
     ).reset_index(drop=True)
@@ -266,26 +266,26 @@ def build_distribution_html(
     )
     header_metrics = ''.join(
         (
-            '<th style="padding:8px;border:1px solid #2d5a7f;font-size:11px;">Presup.<br/>Original</th>'
-            '<th style="padding:8px;border:1px solid #2d5a7f;font-size:11px;">Objetivo<br/>Nuevo</th>'
-            '<th style="padding:8px;border:1px solid #2d5a7f;font-size:11px;">Increm.<br/>%</th>'
+            '<th style="padding:8px;border:1px solid #2d5a7f;font-size:11px;min-width:90px;max-width:90px;">Presup.<br/>Original</th>'
+            '<th style="padding:8px;border:1px solid #2d5a7f;font-size:11px;min-width:90px;max-width:90px;">Objetivo<br/>Nuevo</th>'
+            '<th style="padding:8px;border:1px solid #2d5a7f;font-size:11px;min-width:90px;max-width:90px;">Increm.<br/>%</th>'
         )
         for _month in remaining_months
     )
 
     sticky_styles = {
-        'col1': f'position:sticky;left:0;min-width:{STICKY_COL1_WIDTH}px;max-width:{STICKY_COL1_WIDTH}px;background:#ffffff;z-index:5;box-shadow:2px 0 4px rgba(15,23,42,0.08);',
-        'col2': f'position:sticky;left:{STICKY_COL2_LEFT}px;min-width:{STICKY_COL2_WIDTH}px;max-width:{STICKY_COL2_WIDTH}px;background:#ffffff;z-index:5;box-shadow:2px 0 4px rgba(15,23,42,0.08);',
-        'col3': f'position:sticky;left:{STICKY_COL3_LEFT}px;min-width:{STICKY_COL3_WIDTH}px;max-width:{STICKY_COL3_WIDTH}px;background:#ffffff;z-index:5;box-shadow:2px 0 4px rgba(15,23,42,0.08);',
-        'col4': f'position:sticky;left:{STICKY_COL4_LEFT}px;min-width:{STICKY_COL4_WIDTH}px;max-width:{STICKY_COL4_WIDTH}px;background:#ffffff;z-index:5;box-shadow:2px 0 4px rgba(15,23,42,0.08);',
-        'head1': 'position:sticky;left:0;background:#1e3a5f;z-index:12;',
-        'head2': f'position:sticky;left:{STICKY_COL2_LEFT}px;background:#1e3a5f;z-index:12;',
-        'head3': f'position:sticky;left:{STICKY_COL3_LEFT}px;background:#1e3a5f;z-index:12;',
-        'head4': f'position:sticky;left:{STICKY_COL4_LEFT}px;background:#1e3a5f;z-index:12;',
-        'total1': 'position:sticky;left:0;background:rgba(56,189,248,0.15);z-index:9;',
-        'total2': f'position:sticky;left:{STICKY_COL2_LEFT}px;background:rgba(56,189,248,0.15);z-index:9;',
-        'total3': f'position:sticky;left:{STICKY_COL3_LEFT}px;background:rgba(56,189,248,0.15);z-index:9;',
-        'total4': f'position:sticky;left:{STICKY_COL4_LEFT}px;background:rgba(56,189,248,0.15);z-index:9;',
+        'col1': f'position:sticky;left:0;min-width:{STICKY_COL1_WIDTH}px;max-width:{STICKY_COL1_WIDTH}px;background:#ffffff;z-index:104;',
+        'col2': f'position:sticky;left:{STICKY_COL2_LEFT}px;min-width:{STICKY_COL2_WIDTH}px;max-width:{STICKY_COL2_WIDTH}px;background:#ffffff;z-index:103;',
+        'col3': f'position:sticky;left:{STICKY_COL3_LEFT}px;min-width:{STICKY_COL3_WIDTH}px;max-width:{STICKY_COL3_WIDTH}px;background:#ffffff;z-index:102;',
+        'col4': f'position:sticky;left:{STICKY_COL4_LEFT}px;min-width:{STICKY_COL4_WIDTH}px;max-width:{STICKY_COL4_WIDTH}px;background:#ffffff;z-index:101;box-shadow:2px 0 5px rgba(0,0,0,0.1);',
+        'head1': 'position:sticky;left:0;background:#1e3a5f;z-index:114;',
+        'head2': f'position:sticky;left:{STICKY_COL2_LEFT}px;background:#1e3a5f;z-index:113;',
+        'head3': f'position:sticky;left:{STICKY_COL3_LEFT}px;background:#1e3a5f;z-index:112;',
+        'head4': f'position:sticky;left:{STICKY_COL4_LEFT}px;background:#1e3a5f;z-index:111;box-shadow:2px 0 5px rgba(0,0,0,0.1);',
+        'total1': 'position:sticky;left:0;background:rgba(56,189,248,0.15);z-index:104;',
+        'total2': f'position:sticky;left:{STICKY_COL2_LEFT}px;background:rgba(56,189,248,0.15);z-index:103;',
+        'total3': f'position:sticky;left:{STICKY_COL3_LEFT}px;background:rgba(56,189,248,0.15);z-index:102;',
+        'total4': f'position:sticky;left:{STICKY_COL4_LEFT}px;background:rgba(56,189,248,0.15);z-index:101;box-shadow:2px 0 5px rgba(0,0,0,0.1);',
     }
 
     body_rows = []
@@ -303,9 +303,9 @@ def build_distribution_html(
             pct_color = POSITIVE_PCT_TEXT_COLOR if increment_pct >= 0 else NEGATIVE_PCT_TEXT_COLOR
             pct_bg = POSITIVE_PCT_BG if increment_pct >= 0 else NEGATIVE_PCT_BG
             row_cells.extend([
-                f'<td style="padding:8px;border:1px solid #e2e8f0;text-align:right;">{row[f"{prefix}_Presup_Original__fmt"]}</td>',
-                f'<td style="padding:8px;border:1px solid #e2e8f0;text-align:right;font-weight:600;background:#dbeafe;">{row[f"{prefix}_Objetivo_Nuevo__fmt"]}</td>',
-                f'<td style="padding:8px;border:1px solid #e2e8f0;text-align:right;color:{pct_color};font-weight:700;background:{pct_bg};">{row[f"{prefix}_Incremento_Pct__fmt"]}</td>',
+                f'<td style="padding:6px 4px;border:1px solid #e2e8f0;text-align:right;min-width:90px;max-width:90px;font-size:11px;">{row[f"{prefix}_Presup_Original__fmt"]}</td>',
+                f'<td style="padding:6px 4px;border:1px solid #e2e8f0;text-align:right;font-weight:600;background:#dbeafe;min-width:90px;max-width:90px;font-size:11px;">{row[f"{prefix}_Objetivo_Nuevo__fmt"]}</td>',
+                f'<td style="padding:6px 4px;border:1px solid #e2e8f0;text-align:right;color:{pct_color};font-weight:700;background:{pct_bg};min-width:90px;max-width:90px;font-size:11px;">{row[f"{prefix}_Incremento_Pct__fmt"]}</td>',
             ])
         body_rows.append(f'<tr style="border-bottom:1px solid #e2e8f0;">{"".join(row_cells)}</tr>')
 
@@ -319,9 +319,9 @@ def build_distribution_html(
     for month in remaining_months:
         prefix = MONTH_ABBR[month]
         total_cells.extend([
-            f'<td style="padding:10px;border:1px solid #38bdf8;text-align:right;">{total[f"{prefix}_Presup_Original__fmt"]}</td>',
-            f'<td style="padding:10px;border:1px solid #38bdf8;text-align:right;">{total[f"{prefix}_Objetivo_Nuevo__fmt"]}</td>',
-            f'<td style="padding:10px;border:1px solid #38bdf8;text-align:right;color:#dc2626;">{total[f"{prefix}_Incremento_Pct__fmt"]}</td>',
+            f'<td style="padding:6px 4px;border:1px solid #38bdf8;text-align:right;min-width:90px;max-width:90px;font-size:11px;">{total[f"{prefix}_Presup_Original__fmt"]}</td>',
+            f'<td style="padding:6px 4px;border:1px solid #38bdf8;text-align:right;min-width:90px;max-width:90px;font-size:11px;">{total[f"{prefix}_Objetivo_Nuevo__fmt"]}</td>',
+            f'<td style="padding:6px 4px;border:1px solid #38bdf8;text-align:right;color:#dc2626;min-width:90px;max-width:90px;font-size:11px;">{total[f"{prefix}_Incremento_Pct__fmt"]}</td>',
         ])
 
     total_faltante_fmt = total['Faltante_Proyectado__fmt']
@@ -539,10 +539,10 @@ def build_distribution_html(
   <table id="distribution-data-table" style="width:max-content;min-width:100%;border-collapse:separate;border-spacing:0;font-size:12px;background:#fff;">
     <thead>
       <tr style="background:#1e3a5f;color:#fff;">
-        <th rowspan="2" style="padding:12px;border:1px solid #2d5a7f;min-width:210px;{sticky_styles["head1"]}">Sucursal</th>
-        <th rowspan="2" style="padding:12px;border:1px solid #2d5a7f;min-width:150px;{sticky_styles["head2"]}">Línea</th>
-        <th rowspan="2" style="padding:12px;border:1px solid #2d5a7f;min-width:190px;{sticky_styles["head3"]}">Faltante<br/>Proyectado</th>
-        <th rowspan="2" title="Suma de la producción real acumulada hasta el mes anterior al corte más los nuevos objetivos del período mostrado. Debe igualar el presupuesto fijado del año." style="padding:12px;border:1px solid #2d5a7f;min-width:210px;{sticky_styles["head4"]}">Presupuesto<br/>Total Año <span style="font-size:10px;opacity:0.7;">ⓘ</span></th>
+        <th rowspan="2" style="padding:12px;border:1px solid #2d5a7f;min-width:140px;{sticky_styles["head1"]}">Sucursal</th>
+        <th rowspan="2" style="padding:12px;border:1px solid #2d5a7f;min-width:110px;{sticky_styles["head2"]}">Línea</th>
+        <th rowspan="2" style="padding:12px;border:1px solid #2d5a7f;min-width:150px;{sticky_styles["head3"]}">Faltante<br/>Proyectado</th>
+        <th rowspan="2" title="Suma de la producción real acumulada hasta el mes anterior al corte más los nuevos objetivos del período mostrado. Debe igualar el presupuesto fijado del año." style="padding:12px;border:1px solid #2d5a7f;min-width:150px;{sticky_styles["head4"]}">Presupuesto<br/>Total Año <span style="font-size:10px;opacity:0.7;">ⓘ</span></th>
         {header_months}
       </tr>
       <tr style="background:#1e3a5f;color:#fff;">{header_metrics}</tr>
