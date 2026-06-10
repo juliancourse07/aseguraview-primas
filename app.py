@@ -441,19 +441,15 @@ def _build_faltante_heatmap_data(
 @st.cache_data(ttl=3600, show_spinner=False)
 def calculate_monthly_distribution_cached(
     df_filtered: pd.DataFrame,
-    df_resumen: pd.DataFrame,
-    metric_col: str,
     ref_year: int,
-    cutoff_month: int,
+    cutoff_date: pd.Timestamp,
     meses_quarter: tuple[int, ...],
 ) -> tuple[pd.DataFrame, tuple[int, ...]]:
     """Cache dedicado para la distribución mensual."""
     return build_monthly_distribution(
         df_filtered=df_filtered,
-        df_resumen=df_resumen,
-        metric_col=metric_col,
         ref_year=ref_year,
-        cutoff_month=cutoff_month,
+        cutoff_date=cutoff_date,
         meses_quarter=meses_quarter,
     )
 
@@ -462,27 +458,25 @@ def calculate_monthly_distribution_cached(
 def build_distribution_html_cached(
     df_distribution: pd.DataFrame,
     remaining_months: tuple[int, ...],
-    period_label: str,
     ref_year: int,
+    cutoff_date: pd.Timestamp,
 ) -> str:
     """Cachea la construcción del HTML de la distribución."""
     return build_distribution_html(
         df_distribution=df_distribution,
         remaining_months=remaining_months,
-        period_label=period_label,
         ref_year=ref_year,
+        cutoff_date=cutoff_date,
     )
 
 
 def _distribution_cache_key(
-    vista_mes: str,
     quarter_sel: str,
     periodo_actual: pd.Timestamp,
     filters: dict,
 ) -> tuple:
     """Clave estable para session_state evitando recálculos repetidos."""
     return (
-        vista_mes,
         quarter_sel,
         str(periodo_actual.date()),
         filters.get('linea_plus'),
@@ -633,17 +627,14 @@ def render_faltante_heatmap_fragment(
 @_fragment_compat
 def render_monthly_distribution_fragment(
     df_filtered: pd.DataFrame,
-    df_resumen: pd.DataFrame,
-    metric_col: str,
-    vista_mes: str,
     quarter_sel: str,
-    periodo_actual: pd.Timestamp,
+    fecha_corte: pd.Timestamp,
     ref_year: int,
     meses_quarter: tuple[int, ...],
     filters: dict,
 ) -> tuple[pd.DataFrame, tuple[int, ...]]:
     """Renderiza la nueva matriz mensual usando caché de session_state."""
-    with st.expander("📅 Matriz desplegable — Distribución mensual del déficit", expanded=False):
+    with st.expander("📅 Matriz desplegable — Distribución mensual del faltante proyectado", expanded=False):
         if 'Suc_agrupada' not in df_filtered.columns:
             st.info("No hay columna Suc_agrupada disponible para mostrar la distribución mensual.")
             return pd.DataFrame(), tuple()
@@ -651,7 +642,8 @@ def render_monthly_distribution_fragment(
             st.info("📊 No se puede construir la distribución porque no existe la columna PRESUPUESTO.")
             return pd.DataFrame(), tuple()
 
-        cache_key = _distribution_cache_key(vista_mes, quarter_sel, periodo_actual, filters)
+        periodo_referencia = pd.Timestamp(year=fecha_corte.year, month=fecha_corte.month, day=1)
+        cache_key = _distribution_cache_key(quarter_sel, periodo_referencia, filters)
         cache_store = st.session_state.setdefault('distribucion_cache', {})
         cache_hit = cache_key in cache_store
 
@@ -659,13 +651,11 @@ def render_monthly_distribution_fragment(
             df_distribution, remaining_months = cache_store[cache_key]
             st.caption("⚡ Datos cargados desde caché de sesión")
         else:
-            with st.spinner("🔄 Distribuyendo déficit proporcionalmente..."):
+            with st.spinner("🔄 Calculando faltante proyectado acumulado y distribuyéndolo..."):
                 df_distribution, remaining_months = calculate_monthly_distribution_cached(
                     df_filtered=df_filtered,
-                    df_resumen=df_resumen,
-                    metric_col=metric_col,
                     ref_year=ref_year,
-                    cutoff_month=periodo_actual.month,
+                    cutoff_date=fecha_corte,
                     meses_quarter=meses_quarter,
                 )
             if len(cache_store) >= _MAX_DISTRIBUTION_CACHE_SIZE:
@@ -674,19 +664,21 @@ def render_monthly_distribution_fragment(
             cache_store[cache_key] = (df_distribution, remaining_months)
 
         if df_distribution.empty or not remaining_months:
-            st.info("📊 No hay presupuesto restante disponible para distribuir el déficit con los filtros actuales.")
+            st.info("📊 No hay presupuesto restante disponible para distribuir el faltante proyectado con los filtros actuales.")
             return pd.DataFrame(), tuple()
 
-        period_label = f"{MONTH_HEADER[remaining_months[0]].title()} - {MONTH_HEADER[remaining_months[-1]].title()}"
         with st.spinner("📊 Generando tabla interactiva..."):
             html_table = build_distribution_html_cached(
                 df_distribution=df_distribution,
                 remaining_months=remaining_months,
-                period_label=period_label,
                 ref_year=ref_year,
+                cutoff_date=fecha_corte,
             )
         st.markdown(html_table, unsafe_allow_html=True)
-        st.caption(f"✅ Validación: la suma horizontal por fila coincide con el déficit total asignado para {vista_mes.lower()}.")
+        st.caption(
+            "✅ Validación: Presupuesto Total Año = presupuesto acumulado hasta el mes anterior "
+            "+ nuevos objetivos distribuidos en los meses mostrados."
+        )
         return df_distribution, remaining_months
 
 
@@ -1662,11 +1654,8 @@ with tabs[1]:
         )
         df_distribution, remaining_months = render_monthly_distribution_fragment(
             df_filtered=df_filtered,
-            df_resumen=df_resumen,
-            metric_col=proyectado_vs_pronostico_col,
-            vista_mes=vista_mes,
             quarter_sel=quarter_sel,
-            periodo_actual=periodo_actual,
+            fecha_corte=fecha_corte,
             ref_year=ref_year,
             meses_quarter=tuple(meses_quarter),
             filters=filters,
