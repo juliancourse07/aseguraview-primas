@@ -11,6 +11,9 @@ import pandas as pd
 import numpy as np
 import html
 from io import BytesIO
+from openpyxl.formatting.rule import CellIsRule
+from openpyxl.styles import PatternFill
+from openpyxl.utils import get_column_letter
 
 try:
     import plotly.graph_objects as go
@@ -26,6 +29,13 @@ from utils.data_loader import load_data, load_cutoff_date
 from utils.data_processor import normalize_dataframe
 from utils.formatters import fmt_cop, badge_pct_html, badge_growth_html
 from utils.date_utils import business_days_left
+from utils.distribution import (
+    MONTH_ABBR,
+    MONTH_HEADER,
+    append_distribution_totals,
+    build_distribution_html,
+    build_monthly_distribution,
+)
 
 # Models
 from modelos.forecast_engine import ForecastEngine
@@ -50,6 +60,16 @@ _HEATMAP_MIN_BLEND_RATIO = 0.2
 _HEATMAP_BLEND_RANGE = 0.8
 _DETAILED_CHART_HEIGHT = 500
 _DETAILED_FORECAST_CACHE_TTL_SECONDS = 3600
+_DATA_CACHE_MAX_ENTRIES = 50
+_INCREMENT_PCT_HIGH_THRESHOLD = 50
+_INCREMENT_PCT_MEDIUM_THRESHOLD = 25
+_MAX_DISTRIBUTION_CACHE_SIZE = 12
+
+
+def _fragment_compat(func):
+    """Compatibilidad con Streamlit fragment sin romper entornos viejos."""
+    fragment_fn = getattr(st, "fragment", None)
+    return fragment_fn(func) if callable(fragment_fn) else func
 
 
 def _hex_to_rgba(hex_color: str, alpha: float = 0.1) -> str:
@@ -418,6 +438,258 @@ def _build_faltante_heatmap_data(
     return pivot_metric_detalle, pivot_metric_export
 
 
+@st.cache_data(ttl=3600, show_spinner=False)
+def calculate_monthly_distribution_cached(
+    df_filtered: pd.DataFrame,
+    df_resumen: pd.DataFrame,
+    metric_col: str,
+    ref_year: int,
+    cutoff_month: int,
+    meses_quarter: tuple[int, ...],
+) -> tuple[pd.DataFrame, tuple[int, ...]]:
+    """Cache dedicado para la distribución mensual."""
+    return build_monthly_distribution(
+        df_filtered=df_filtered,
+        df_resumen=df_resumen,
+        metric_col=metric_col,
+        ref_year=ref_year,
+        cutoff_month=cutoff_month,
+        meses_quarter=meses_quarter,
+    )
+
+
+@st.cache_data(ttl=3600, show_spinner=False)
+def build_distribution_html_cached(
+    df_distribution: pd.DataFrame,
+    remaining_months: tuple[int, ...],
+    period_label: str,
+    ref_year: int,
+) -> str:
+    """Cachea la construcción del HTML de la distribución."""
+    return build_distribution_html(
+        df_distribution=df_distribution,
+        remaining_months=remaining_months,
+        period_label=period_label,
+        ref_year=ref_year,
+    )
+
+
+def _distribution_cache_key(
+    vista_mes: str,
+    quarter_sel: str,
+    periodo_actual: pd.Timestamp,
+    filters: dict,
+) -> tuple:
+    """Clave estable para session_state evitando recálculos repetidos."""
+    return (
+        vista_mes,
+        quarter_sel,
+        str(periodo_actual.date()),
+        filters.get('linea_plus'),
+        tuple(filters.get('codigos') or []),
+        tuple(filters.get('sucursales') or []),
+        tuple(filters.get('suc_agrupadas') or []),
+        filters.get('anio_analisis'),
+    )
+
+
+def _apply_increment_pct_conditional_formatting(
+    worksheet,
+    df_distribution_export: pd.DataFrame,
+    remaining_months: tuple[int, ...],
+) -> None:
+    """Aplica semáforo a columnas de incremento porcentual en Excel."""
+    if df_distribution_export.empty:
+        return
+
+    red_fill = PatternFill(fill_type="solid", fgColor="FECACA")
+    orange_fill = PatternFill(fill_type="solid", fgColor="FED7AA")
+    green_fill = PatternFill(fill_type="solid", fgColor="DCFCE7")
+    data_end_row = len(df_distribution_export) + 1
+
+    for month in remaining_months:
+        col_name = f'{MONTH_ABBR[month]}_Incremento_Pct'
+        try:
+            col_idx = df_distribution_export.columns.get_loc(col_name) + 1
+        except KeyError:
+            continue
+        col_letter = get_column_letter(col_idx)
+        cell_range = f"{col_letter}2:{col_letter}{data_end_row}"
+        worksheet.conditional_formatting.add(
+            cell_range,
+            CellIsRule(operator='greaterThan', formula=[str(_INCREMENT_PCT_HIGH_THRESHOLD)], fill=red_fill),
+        )
+        worksheet.conditional_formatting.add(
+            cell_range,
+            CellIsRule(
+                operator='between',
+                formula=[str(_INCREMENT_PCT_MEDIUM_THRESHOLD), str(_INCREMENT_PCT_HIGH_THRESHOLD)],
+                fill=orange_fill,
+            ),
+        )
+        worksheet.conditional_formatting.add(
+            cell_range,
+            CellIsRule(operator='lessThan', formula=[str(_INCREMENT_PCT_MEDIUM_THRESHOLD)], fill=green_fill),
+        )
+
+
+@_fragment_compat
+def render_deficit_heatmap_fragment(
+    df_filtered: pd.DataFrame,
+    df_resumen: pd.DataFrame,
+    metric_col: str,
+    vista_mes: str,
+    periodo_actual: pd.Timestamp,
+    meses_quarter: tuple[int, ...],
+    ref_year: int,
+    fecha_corte: pd.Timestamp,
+) -> pd.DataFrame:
+    """Renderiza el mapa de calor 1 dentro de un fragmento."""
+    with st.expander("🔥 Mapa de Calor 1 — Déficit vs Meta por Sucursal y Línea", expanded=False):
+        if 'Suc_agrupada' not in df_filtered.columns:
+            st.info("No hay columna Suc_agrupada disponible para mostrar la matriz")
+            return pd.DataFrame()
+        if 'PRESUPUESTO' not in df_filtered.columns:
+            st.info("📊 No se puede construir el mapa de calor porque no existe la columna PRESUPUESTO.")
+            return pd.DataFrame()
+
+        pivot_deficit_detalle, pivot_deficit = _build_branch_heatmap_data(
+            df_filtered=df_filtered,
+            df_resumen=df_resumen,
+            metric_col=metric_col,
+            vista_mes=vista_mes,
+            periodo_actual=periodo_actual,
+            meses_quarter=list(meses_quarter),
+            ref_year=ref_year,
+            fecha_corte=fecha_corte,
+        )
+
+        if pivot_deficit.empty:
+            st.info("📊 No hay datos de presupuesto por sucursal para construir el mapa de calor.")
+            return pd.DataFrame()
+
+        totales_linea = pivot_deficit.loc['TOTAL LÍNEA']
+        heatmap_html = _build_heatmap_html(
+            pivot_deficit_detalle=pivot_deficit_detalle,
+            totales_linea=totales_linea,
+            vista_mes=vista_mes,
+            periodo_actual=periodo_actual,
+            title_text="🔥 Déficit vs Meta",
+            legend_text="🔴 Rojo intenso = valores positivos (Déficit vs pronóstico) | ⬜ Crema = cero o faltante",
+            note_text="⚠️ La métrica es Proyectado(-)Pronóstico: los valores positivos tienen una animación suave como señal de alerta visual frente al riesgo de déficit frente al pronóstico.",
+        )
+        st.markdown(heatmap_html, unsafe_allow_html=True)
+        st.caption("🔴 Rojo escarlata = valores positivos de Proyectado(-)Pronóstico (superávit frente al pronóstico) | ⬜ Blanco crema = cero o faltante | Los totales por línea se muestran antes del detalle por sucursal")
+        return pivot_deficit
+
+
+@_fragment_compat
+def render_faltante_heatmap_fragment(
+    df_filtered: pd.DataFrame,
+    vista_mes: str,
+    periodo_actual: pd.Timestamp,
+    meses_quarter: tuple[int, ...],
+    ref_year: int,
+    fecha_corte: pd.Timestamp,
+) -> pd.DataFrame:
+    """Renderiza el mapa de calor 2 dentro de un fragmento."""
+    with st.expander("🔥 Mapa de Calor 2 — Faltante Proyectado por Sucursal y Línea", expanded=False):
+        if 'Suc_agrupada' not in df_filtered.columns:
+            st.info("No hay columna Suc_agrupada disponible para mostrar la matriz")
+            return pd.DataFrame()
+        if 'PRESUPUESTO' not in df_filtered.columns:
+            st.info("📊 No se puede construir el mapa de calor porque no existe la columna PRESUPUESTO.")
+            return pd.DataFrame()
+
+        pivot_faltante_detalle, pivot_faltante = _build_faltante_heatmap_data(
+            df_filtered=df_filtered,
+            vista_mes=vista_mes,
+            periodo_actual=periodo_actual,
+            meses_quarter=list(meses_quarter),
+            ref_year=ref_year,
+            fecha_corte=fecha_corte,
+        )
+
+        if pivot_faltante.empty:
+            st.info("📊 No hay datos de presupuesto por sucursal para construir el mapa de calor.")
+            return pd.DataFrame()
+
+        totales_linea = pivot_faltante.loc['TOTAL LÍNEA']
+        heatmap_html = _build_heatmap_html(
+            pivot_deficit_detalle=pivot_faltante_detalle,
+            totales_linea=totales_linea,
+            vista_mes=vista_mes,
+            periodo_actual=periodo_actual,
+            title_text="🔥 Faltante Proyectado",
+            legend_text="🔴 Rojo = falta producir | 🟢 Verde = meta cumplida | ⬜ Crema = cero",
+            note_text="⚠️ El Faltante Proyectado muestra lo que resta por producir vs. presupuesto basado en producción REAL actual (no incluye pronóstico). Valores positivos indican que falta cumplir meta.",
+            highlight_negative=True,
+        )
+        st.markdown(heatmap_html, unsafe_allow_html=True)
+        st.caption("🔴 Rojo = falta producir | 🟢 Verde = meta cumplida | ⬜ Crema = cero | Los totales por línea se muestran antes del detalle por sucursal")
+        return pivot_faltante
+
+
+@_fragment_compat
+def render_monthly_distribution_fragment(
+    df_filtered: pd.DataFrame,
+    df_resumen: pd.DataFrame,
+    metric_col: str,
+    vista_mes: str,
+    quarter_sel: str,
+    periodo_actual: pd.Timestamp,
+    ref_year: int,
+    meses_quarter: tuple[int, ...],
+    filters: dict,
+) -> tuple[pd.DataFrame, tuple[int, ...]]:
+    """Renderiza la nueva matriz mensual usando caché de session_state."""
+    with st.expander("📅 Matriz desplegable — Distribución mensual del déficit", expanded=False):
+        if 'Suc_agrupada' not in df_filtered.columns:
+            st.info("No hay columna Suc_agrupada disponible para mostrar la distribución mensual.")
+            return pd.DataFrame(), tuple()
+        if 'PRESUPUESTO' not in df_filtered.columns:
+            st.info("📊 No se puede construir la distribución porque no existe la columna PRESUPUESTO.")
+            return pd.DataFrame(), tuple()
+
+        cache_key = _distribution_cache_key(vista_mes, quarter_sel, periodo_actual, filters)
+        cache_store = st.session_state.setdefault('distribucion_cache', {})
+        cache_hit = cache_key in cache_store
+
+        if cache_hit:
+            df_distribution, remaining_months = cache_store[cache_key]
+            st.caption("⚡ Datos cargados desde caché de sesión")
+        else:
+            with st.spinner("🔄 Distribuyendo déficit proporcionalmente..."):
+                df_distribution, remaining_months = calculate_monthly_distribution_cached(
+                    df_filtered=df_filtered,
+                    df_resumen=df_resumen,
+                    metric_col=metric_col,
+                    ref_year=ref_year,
+                    cutoff_month=periodo_actual.month,
+                    meses_quarter=meses_quarter,
+                )
+            if len(cache_store) >= _MAX_DISTRIBUTION_CACHE_SIZE:
+                first_key = next(iter(cache_store))
+                cache_store.pop(first_key, None)
+            cache_store[cache_key] = (df_distribution, remaining_months)
+
+        if df_distribution.empty or not remaining_months:
+            st.info("📊 No hay presupuesto restante disponible para distribuir el déficit con los filtros actuales.")
+            return pd.DataFrame(), tuple()
+
+        period_label = f"{MONTH_HEADER[remaining_months[0]].title()} - {MONTH_HEADER[remaining_months[-1]].title()}"
+        with st.spinner("📊 Generando tabla interactiva..."):
+            html_table = build_distribution_html_cached(
+                df_distribution=df_distribution,
+                remaining_months=remaining_months,
+                period_label=period_label,
+                ref_year=ref_year,
+            )
+        st.markdown(html_table, unsafe_allow_html=True)
+        st.caption(f"✅ Validación: la suma horizontal por fila coincide con el déficit total asignado para {vista_mes.lower()}.")
+        return df_distribution, remaining_months
+
+
 # ====================  PAGE CONFIG ====================
 st.set_page_config(
     page_title=PAGE_TITLE,
@@ -430,9 +702,9 @@ st.markdown("""
 """, unsafe_allow_html=True)
 
 # ==================== LOAD DATA ====================
-@st.cache_data(ttl=3600)
+@st.cache_data(ttl=3600, show_spinner=False, max_entries=_DATA_CACHE_MAX_ENTRIES)
 def load_and_process_data():
-    """Carga y procesa datos - Cache de 1 hora para reducir recargas y mejorar rendimiento"""
+    """Carga y procesa datos con caché para reducir recargas y mejorar rendimiento."""
     df_raw = load_data()
     df_processed = normalize_dataframe(df_raw)
     fecha_corte = load_cutoff_date()
@@ -867,6 +1139,9 @@ st.caption("Nowcast, cierre estimado del año, ejecución vs presupuesto y propu
 
 # ==================== SIDEBAR ====================
 filters = render_sidebar(df, fecha_corte)
+
+if 'distribucion_cache' not in st.session_state:
+    st.session_state.distribucion_cache = {}
 
 # ==================== APPLY FILTERS ====================
 df_filtered = df.copy()
@@ -1367,73 +1642,36 @@ with tabs[1]:
         st.markdown(html_table, unsafe_allow_html=True)
 
         st.markdown("---")
-        pivot_deficit = pd.DataFrame()
-        pivot_faltante = pd.DataFrame()
-
-        with st.expander("🔥 Mapa de Calor 1 — Déficit vs Meta por Sucursal y Línea", expanded=False):
-            if 'Suc_agrupada' not in df_filtered.columns:
-                st.info("No hay columna Suc_agrupada disponible para mostrar la matriz")
-            elif 'PRESUPUESTO' not in df_filtered.columns:
-                st.info("📊 No se puede construir el mapa de calor porque no existe la columna PRESUPUESTO.")
-            else:
-                pivot_deficit_detalle, pivot_deficit = _build_branch_heatmap_data(
-                    df_filtered=df_filtered,
-                    df_resumen=df_resumen,
-                    metric_col=proyectado_vs_pronostico_col,
-                    vista_mes=vista_mes,
-                    periodo_actual=periodo_actual,
-                    meses_quarter=meses_quarter,
-                    ref_year=ref_year,
-                    fecha_corte=fecha_corte,
-                )
-
-                if pivot_deficit.empty:
-                    st.info("📊 No hay datos de presupuesto por sucursal para construir el mapa de calor.")
-                else:
-                    totales_linea = pivot_deficit.loc['TOTAL LÍNEA']
-                    heatmap_html = _build_heatmap_html(
-                        pivot_deficit_detalle=pivot_deficit_detalle,
-                        totales_linea=totales_linea,
-                        vista_mes=vista_mes,
-                        periodo_actual=periodo_actual,
-                        title_text="🔥 Déficit vs Meta",
-                        legend_text="🔴 Rojo intenso = valores positivos (Déficit vs pronóstico) | ⬜ Crema = cero o faltante",
-                        note_text="⚠️ La métrica es Proyectado(-)Pronóstico: los valores positivos tienen una animación suave como señal de alerta visual frente al riesgo de déficit frente al pronóstico.",
-                    )
-                    st.markdown(heatmap_html, unsafe_allow_html=True)
-                    st.caption("🔴 Rojo escarlata = valores positivos de Proyectado(-)Pronóstico (superávit frente al pronóstico) | ⬜ Blanco crema = cero o faltante | Los totales por línea se muestran antes del detalle por sucursal")
-
-        with st.expander("🔥 Mapa de Calor 2 — Faltante Proyectado por Sucursal y Línea", expanded=False):
-            if 'Suc_agrupada' not in df_filtered.columns:
-                st.info("No hay columna Suc_agrupada disponible para mostrar la matriz")
-            elif 'PRESUPUESTO' not in df_filtered.columns:
-                st.info("📊 No se puede construir el mapa de calor porque no existe la columna PRESUPUESTO.")
-            else:
-                pivot_faltante_detalle, pivot_faltante = _build_faltante_heatmap_data(
-                    df_filtered=df_filtered,
-                    vista_mes=vista_mes,
-                    periodo_actual=periodo_actual,
-                    meses_quarter=meses_quarter,
-                    ref_year=ref_year,
-                    fecha_corte=fecha_corte,
-                )
-
-                if pivot_faltante.empty:
-                    st.info("📊 No hay datos de presupuesto por sucursal para construir el mapa de calor.")
-                else:
-                    totales_linea = pivot_faltante.loc['TOTAL LÍNEA']
-                    heatmap_html = _build_heatmap_html(
-                        pivot_deficit_detalle=pivot_faltante_detalle,
-                        totales_linea=totales_linea,
-                        vista_mes=vista_mes,
-                        periodo_actual=periodo_actual,
-                        title_text="🔥 Faltante Proyectado",
-                        legend_text="🔴 Rojo = falta producir | 🟢 Verde = meta cumplida | ⬜ Crema = cero",
-                        note_text="⚠️ El Faltante Proyectado muestra lo que resta por producir vs. presupuesto basado en producción REAL actual (no incluye pronóstico). Valores positivos indican que falta cumplir meta.",
-                        highlight_negative=True,
-                    )
-                    st.markdown(heatmap_html, unsafe_allow_html=True)
-                    st.caption("🔴 Rojo = falta producir | 🟢 Verde = meta cumplida | ⬜ Crema = cero | Los totales por línea se muestran antes del detalle por sucursal")
+        pivot_deficit = render_deficit_heatmap_fragment(
+            df_filtered=df_filtered,
+            df_resumen=df_resumen,
+            metric_col=proyectado_vs_pronostico_col,
+            vista_mes=vista_mes,
+            periodo_actual=periodo_actual,
+            meses_quarter=tuple(meses_quarter),
+            ref_year=ref_year,
+            fecha_corte=fecha_corte,
+        )
+        pivot_faltante = render_faltante_heatmap_fragment(
+            df_filtered=df_filtered,
+            vista_mes=vista_mes,
+            periodo_actual=periodo_actual,
+            meses_quarter=tuple(meses_quarter),
+            ref_year=ref_year,
+            fecha_corte=fecha_corte,
+        )
+        df_distribution, remaining_months = render_monthly_distribution_fragment(
+            df_filtered=df_filtered,
+            df_resumen=df_resumen,
+            metric_col=proyectado_vs_pronostico_col,
+            vista_mes=vista_mes,
+            quarter_sel=quarter_sel,
+            periodo_actual=periodo_actual,
+            ref_year=ref_year,
+            meses_quarter=tuple(meses_quarter),
+            filters=filters,
+        )
+        distribution_export = append_distribution_totals(df_distribution, remaining_months)
 
         # Exportación unificada
         with BytesIO() as buf:
@@ -1451,11 +1689,22 @@ with tabs[1]:
                     )
                 else:
                     pivot_faltante.to_excel(writer, sheet_name="Faltante_Proyectado")
+                if distribution_export.empty:
+                    pd.DataFrame([{"Nota": "Sin datos para Distribución Mensual con los filtros actuales"}]).to_excel(
+                        writer, sheet_name="Distribucion_Mensual", index=False
+                    )
+                else:
+                    distribution_export.to_excel(writer, sheet_name="Distribucion_Mensual", index=False)
+                    _apply_increment_pct_conditional_formatting(
+                        writer.book["Distribucion_Mensual"],
+                        distribution_export,
+                        remaining_months,
+                    )
             excel_bytes = buf.getvalue()
 
         vista_label = {"Mes": "mes", "Año": "anio", "Acumulado Mes": "acumulado"}.get(vista_mes, "general")
         st.download_button(
-            label="⬇️ Exportar resumen + mapas de calor a Excel",
+            label="⬇️ Exportar resumen + mapas de calor + distribución a Excel",
             data=excel_bytes,
             file_name=f"aseguraview_{vista_label}_{periodo_actual.strftime('%Y%m')}.xlsx",
             mime="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
