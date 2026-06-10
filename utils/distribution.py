@@ -1,5 +1,5 @@
 # -*- coding: utf-8 -*-
-"""Cálculo y render de la distribución mensual del déficit."""
+"""Cálculo y render de la distribución mensual del faltante proyectado."""
 
 from __future__ import annotations
 
@@ -9,7 +9,7 @@ import numpy as np
 import pandas as pd
 
 from utils.formatters import fmt_cop
-from utils.performance import fast_proportional_distribution, calculate_increments
+from utils.performance import calculate_increments, fast_proportional_distribution
 
 MONTH_ABBR = {
     1: "Ene",
@@ -55,44 +55,72 @@ def get_remaining_months(cutoff_month: int, meses_quarter: tuple[int, ...] | lis
     return tuple(month for month in range(int(cutoff_month), 13) if month in quarter_months)
 
 
+def _previous_cutoff_period(ref_year: int, cutoff_date: pd.Timestamp) -> tuple[int, int]:
+    """Obtiene el año/mes inmediatamente anterior al corte."""
+    previous_month = int(cutoff_date.month) - 1
+    if previous_month >= 1:
+        return int(ref_year), previous_month
+    return int(ref_year) - 1, 12
+
+
+def _accumulated_period_label(ref_year: int, cutoff_date: pd.Timestamp) -> str:
+    """Construye etiqueta del período acumulado usado para el faltante."""
+    previous_year, previous_month = _previous_cutoff_period(ref_year, cutoff_date)
+    if previous_month == 12 and previous_year != int(ref_year):
+        return f"Enero - {MONTH_HEADER[previous_month].title()} {previous_year}"
+    return f"Enero - {MONTH_HEADER[previous_month].title()} {previous_year}"
+
+
 def build_monthly_distribution(
     df_filtered: pd.DataFrame,
-    df_resumen: pd.DataFrame,
-    metric_col: str,
     ref_year: int,
-    cutoff_month: int,
+    cutoff_date: pd.Timestamp,
     meses_quarter: tuple[int, ...] | list[int],
 ) -> tuple[pd.DataFrame, tuple[int, ...]]:
-    """Distribuye el déficit de línea en meses restantes por sucursal × línea."""
-    required_cols = {'FECHA', 'Suc_agrupada', 'LINEA_PLUS', 'PRESUPUESTO'}
+    """Distribuye el faltante proyectado acumulado por sucursal × línea."""
+    required_cols = {'FECHA', 'Suc_agrupada', 'LINEA_PLUS', 'PRESUPUESTO', 'IMP_PRIMA'}
     if not required_cols.issubset(df_filtered.columns):
         return pd.DataFrame(), tuple()
-    if 'LINEA_PLUS' not in df_resumen.columns or metric_col not in df_resumen.columns:
-        return pd.DataFrame(), tuple()
 
-    remaining_months = get_remaining_months(cutoff_month, meses_quarter)
+    remaining_months = get_remaining_months(int(cutoff_date.month), meses_quarter)
     if not remaining_months:
         return pd.DataFrame(), tuple()
 
-    metric_by_line = df_resumen.copy()
-    metric_by_line = metric_by_line[metric_by_line['LINEA_PLUS'].notna()].copy()
-    metric_by_line = metric_by_line[
-        ~metric_by_line['LINEA_PLUS'].astype(str).str.upper().isin({'TOTAL', 'TOTAL LÍNEA'})
+    previous_year, previous_month = _previous_cutoff_period(ref_year, cutoff_date)
+
+    df_work = df_filtered[['FECHA', 'Suc_agrupada', 'LINEA_PLUS', 'PRESUPUESTO', 'IMP_PRIMA']].copy()
+    df_work = df_work[df_work['LINEA_PLUS'].notna()].copy()
+    df_work['PRESUPUESTO'] = pd.to_numeric(df_work['PRESUPUESTO'], errors='coerce').fillna(0.0)
+    df_work['IMP_PRIMA'] = pd.to_numeric(df_work['IMP_PRIMA'], errors='coerce').fillna(0.0)
+
+    df_ytd = df_work[
+        (df_work['FECHA'].dt.year == previous_year) &
+        (df_work['FECHA'].dt.month <= previous_month)
     ]
-    if metric_by_line.empty:
+    if df_ytd.empty:
         return pd.DataFrame(), remaining_months
 
-    metric_by_line[metric_col] = pd.to_numeric(metric_by_line[metric_col], errors='coerce').fillna(0.0)
-    metric_total_by_line = metric_by_line.groupby('LINEA_PLUS', dropna=False)[metric_col].sum()
+    faltante_by_row = (
+        df_ytd
+        .groupby(['Suc_agrupada', 'LINEA_PLUS'], dropna=False)[['PRESUPUESTO', 'IMP_PRIMA']]
+        .sum()
+        .rename(columns={
+            'PRESUPUESTO': 'Presupuesto_Acumulado_Anterior',
+            'IMP_PRIMA': 'Produccion_Acumulada_Anterior',
+        })
+    )
+    faltante_by_row['Faltante_Proyectado'] = (
+        faltante_by_row['Presupuesto_Acumulado_Anterior'] -
+        faltante_by_row['Produccion_Acumulada_Anterior']
+    )
 
-    df_budget = df_filtered[
-        (df_filtered['FECHA'].dt.year == int(ref_year)) &
-        (df_filtered['FECHA'].dt.month.isin(remaining_months))
+    df_budget = df_work[
+        (df_work['FECHA'].dt.year == int(ref_year)) &
+        (df_work['FECHA'].dt.month.isin(remaining_months))
     ][['Suc_agrupada', 'LINEA_PLUS', 'FECHA', 'PRESUPUESTO']].copy()
     if df_budget.empty:
         return pd.DataFrame(), remaining_months
 
-    df_budget['PRESUPUESTO'] = pd.to_numeric(df_budget['PRESUPUESTO'], errors='coerce').fillna(0.0)
     df_budget['MES'] = df_budget['FECHA'].dt.month
 
     monthly_budget = (
@@ -105,44 +133,42 @@ def build_monthly_distribution(
     if monthly_budget.empty:
         return pd.DataFrame(), remaining_months
 
-    line_budget_totals = monthly_budget.groupby(level='LINEA_PLUS').sum().sum(axis=1)
-    row_budget_totals = monthly_budget.sum(axis=1).to_numpy(dtype=np.float64)
-    row_lineas = monthly_budget.index.get_level_values('LINEA_PLUS')
-    metric_total_rows = row_lineas.map(metric_total_by_line).to_numpy(dtype=np.float64)
-    budget_total_rows = row_lineas.map(line_budget_totals).to_numpy(dtype=np.float64)
+    base_result = monthly_budget.join(faltante_by_row, how='outer').fillna(0.0)
+    base_result = base_result[
+        (base_result['Faltante_Proyectado'] != 0) |
+        (base_result[list(remaining_months)].sum(axis=1) != 0)
+    ]
+    if base_result.empty:
+        return pd.DataFrame(), remaining_months
 
-    row_deficit_totals = np.divide(
-        metric_total_rows * row_budget_totals,
-        budget_total_rows,
-        out=np.zeros_like(row_budget_totals, dtype=np.float64),
-        where=budget_total_rows != 0,
-    )
-
-    budget_matrix = monthly_budget.to_numpy(dtype=np.float64)
-    distribution_matrix = fast_proportional_distribution(row_deficit_totals, budget_matrix)
+    budget_matrix = base_result[list(remaining_months)].to_numpy(dtype=np.float64)
+    faltante_totals = base_result['Faltante_Proyectado'].to_numpy(dtype=np.float64)
+    distribution_matrix = fast_proportional_distribution(faltante_totals, budget_matrix)
     increment_pct_matrix = calculate_increments(
         distribution_matrix.ravel(),
         budget_matrix.ravel(),
     ).reshape(distribution_matrix.shape)
+    objective_matrix = budget_matrix + distribution_matrix
 
     result = pd.DataFrame({
-        'Suc_agrupada': monthly_budget.index.get_level_values('Suc_agrupada'),
-        'LINEA_PLUS': row_lineas,
-        'Deficit_Total': distribution_matrix.sum(axis=1),
+        'Suc_agrupada': base_result.index.get_level_values('Suc_agrupada'),
+        'LINEA_PLUS': base_result.index.get_level_values('LINEA_PLUS'),
+        'Faltante_Proyectado': faltante_totals,
+        'Presupuesto_Total_Anio': (
+            base_result['Presupuesto_Acumulado_Anterior'].to_numpy(dtype=np.float64) +
+            objective_matrix.sum(axis=1)
+        ),
     })
 
     for idx, month in enumerate(remaining_months):
         prefix = MONTH_ABBR[month]
-        monthly_deficit = distribution_matrix[:, idx]
         monthly_budget_values = budget_matrix[:, idx]
-        result[f'{prefix}_Deficit'] = monthly_deficit
         result[f'{prefix}_Presup_Original'] = monthly_budget_values
-        result[f'{prefix}_Objetivo_Nuevo'] = monthly_budget_values + monthly_deficit
-        result[f'{prefix}_Incremento_$'] = monthly_deficit
+        result[f'{prefix}_Objetivo_Nuevo'] = objective_matrix[:, idx]
         result[f'{prefix}_Incremento_Pct'] = increment_pct_matrix[:, idx]
 
     result = result.sort_values(
-        by=['Deficit_Total', 'Suc_agrupada', 'LINEA_PLUS'],
+        by=['Faltante_Proyectado', 'Suc_agrupada', 'LINEA_PLUS'],
         ascending=[False, True, True],
         kind='mergesort',
     ).reset_index(drop=True)
@@ -160,30 +186,19 @@ def append_distribution_totals(
     total_row = {
         'Suc_agrupada': 'TOTAL',
         'LINEA_PLUS': '',
-        'Deficit_Total': float(df_distribution['Deficit_Total'].sum()),
+        'Faltante_Proyectado': float(df_distribution['Faltante_Proyectado'].sum()),
+        'Presupuesto_Total_Anio': float(df_distribution['Presupuesto_Total_Anio'].sum()),
     }
 
     for month in remaining_months:
         prefix = MONTH_ABBR[month]
-        deficit_total = float(df_distribution[f'{prefix}_Deficit'].sum())
         budget_total = float(df_distribution[f'{prefix}_Presup_Original'].sum())
-        total_row[f'{prefix}_Deficit'] = deficit_total
+        objetivo_total = float(df_distribution[f'{prefix}_Objetivo_Nuevo'].sum())
         total_row[f'{prefix}_Presup_Original'] = budget_total
-        total_row[f'{prefix}_Objetivo_Nuevo'] = budget_total + deficit_total
-        total_row[f'{prefix}_Incremento_$'] = deficit_total
-        total_row[f'{prefix}_Incremento_Pct'] = _safe_increment_pct(deficit_total, budget_total)
+        total_row[f'{prefix}_Objetivo_Nuevo'] = objetivo_total
+        total_row[f'{prefix}_Incremento_Pct'] = _safe_increment_pct(objetivo_total - budget_total, budget_total)
 
     return pd.concat([df_distribution, pd.DataFrame([total_row])], ignore_index=True)
-
-
-def _fmt_signed_cop(value: float) -> str:
-    formatted = fmt_cop(abs(value))
-    if value > 0:
-        return f"+{formatted}"
-    if value < 0:
-        return f"-{formatted}"
-    return fmt_cop(0)
-
 
 def _fmt_signed_pct(value: float) -> str:
     sign = '+' if value > 0 else '-' if value < 0 else ''
@@ -197,90 +212,135 @@ def _safe_increment_pct(deficit_value: float, budget_value: float) -> float:
 def build_distribution_html(
     df_distribution: pd.DataFrame,
     remaining_months: tuple[int, ...] | list[int],
-    period_label: str,
     ref_year: int,
+    cutoff_date: pd.Timestamp,
 ) -> str:
     """Construye el HTML de la matriz desplegable mensual."""
     if df_distribution.empty or not remaining_months:
         return ""
 
     df_export = append_distribution_totals(df_distribution, remaining_months)
-    value_suffixes = ('Deficit_Total', 'Deficit', 'Presup_Original', 'Objetivo_Nuevo')
+    value_suffixes = ('Faltante_Proyectado', 'Presupuesto_Total_Anio', 'Presup_Original', 'Objetivo_Nuevo')
     for col in df_export.columns:
         if col.endswith(value_suffixes):
             df_export[f'{col}__fmt'] = df_export[col].map(fmt_cop)
-        elif col.endswith('Incremento_$'):
-            df_export[f'{col}__fmt'] = df_export[col].map(_fmt_signed_cop)
         elif col.endswith('Incremento_Pct'):
             df_export[f'{col}__fmt'] = df_export[col].map(_fmt_signed_pct)
 
     header_months = ''.join(
-        f'<th colspan="5" style="padding:12px;border:1px solid #2d5a7f;background:#0a5a8a;">{MONTH_HEADER[month]}</th>'
+        f'<th colspan="3" style="padding:12px;border:1px solid #2d5a7f;background:#0a5a8a;min-width:330px;">{MONTH_HEADER[month]}</th>'
         for month in remaining_months
     )
     header_metrics = ''.join(
         (
-            '<th style="padding:8px;border:1px solid #2d5a7f;font-size:11px;">Déficit<br/>Mes</th>'
             '<th style="padding:8px;border:1px solid #2d5a7f;font-size:11px;">Presup.<br/>Original</th>'
             '<th style="padding:8px;border:1px solid #2d5a7f;font-size:11px;">Objetivo<br/>Nuevo</th>'
-            '<th style="padding:8px;border:1px solid #2d5a7f;font-size:11px;">Increm.<br/>$</th>'
             '<th style="padding:8px;border:1px solid #2d5a7f;font-size:11px;">Increm.<br/>%</th>'
         )
         for _month in remaining_months
     )
 
+    sticky_styles = {
+        'col1': 'position:sticky;left:0;min-width:210px;max-width:210px;background:#ffffff;z-index:5;box-shadow:2px 0 4px rgba(15,23,42,0.08);',
+        'col2': 'position:sticky;left:210px;min-width:150px;max-width:150px;background:#ffffff;z-index:5;box-shadow:2px 0 4px rgba(15,23,42,0.08);',
+        'col3': 'position:sticky;left:360px;min-width:190px;max-width:190px;background:#ffffff;z-index:5;box-shadow:2px 0 4px rgba(15,23,42,0.08);',
+        'col4': 'position:sticky;left:550px;min-width:210px;max-width:210px;background:#ffffff;z-index:5;box-shadow:2px 0 4px rgba(15,23,42,0.08);',
+        'head1': 'position:sticky;left:0;background:#1e3a5f;z-index:12;',
+        'head2': 'position:sticky;left:210px;background:#1e3a5f;z-index:12;',
+        'head3': 'position:sticky;left:360px;background:#1e3a5f;z-index:12;',
+        'head4': 'position:sticky;left:550px;background:#1e3a5f;z-index:12;',
+        'total1': 'position:sticky;left:0;background:rgba(56,189,248,0.15);z-index:9;',
+        'total2': 'position:sticky;left:210px;background:rgba(56,189,248,0.15);z-index:9;',
+        'total3': 'position:sticky;left:360px;background:rgba(56,189,248,0.15);z-index:9;',
+        'total4': 'position:sticky;left:550px;background:rgba(56,189,248,0.15);z-index:9;',
+    }
+
     body_rows = []
     data_rows = df_export.iloc[:-1]
     for row in data_rows.to_dict(orient='records'):
         row_cells = [
-            f'<td style="padding:10px;border:1px solid #e2e8f0;">{html.escape(str(row["Suc_agrupada"]))}</td>',
-            f'<td style="padding:10px;border:1px solid #e2e8f0;">{html.escape(str(row["LINEA_PLUS"]))}</td>',
-            f'<td style="padding:10px;border:1px solid #e2e8f0;font-weight:700;color:#ef4444;text-align:right;">{row["Deficit_Total__fmt"]}</td>',
+            f'<td style="padding:10px;border:1px solid #e2e8f0;{sticky_styles["col1"]}">{html.escape(str(row["Suc_agrupada"]))}</td>',
+            f'<td style="padding:10px;border:1px solid #e2e8f0;{sticky_styles["col2"]}">{html.escape(str(row["LINEA_PLUS"]))}</td>',
+            f'<td style="padding:10px;border:1px solid #e2e8f0;font-weight:700;color:#ef4444;text-align:right;{sticky_styles["col3"]}">{row["Faltante_Proyectado__fmt"]}</td>',
+            f'<td style="padding:10px;border:1px solid #e2e8f0;font-weight:700;text-align:right;background:#eff6ff;{sticky_styles["col4"]}">{row["Presupuesto_Total_Anio__fmt"]}</td>',
         ]
         for month in remaining_months:
             prefix = MONTH_ABBR[month]
             increment_pct = row[f'{prefix}_Incremento_Pct']
             pct_color = POSITIVE_PCT_TEXT_COLOR if increment_pct >= 0 else NEGATIVE_PCT_TEXT_COLOR
             pct_bg = POSITIVE_PCT_BG if increment_pct >= 0 else NEGATIVE_PCT_BG
-            amount_color = POSITIVE_INCREMENT_COLOR if row[f'{prefix}_Incremento_$'] >= 0 else NEGATIVE_INCREMENT_COLOR
             row_cells.extend([
-                f'<td style="padding:8px;border:1px solid #e2e8f0;text-align:right;background:#fef2f2;">{row[f"{prefix}_Deficit__fmt"]}</td>',
                 f'<td style="padding:8px;border:1px solid #e2e8f0;text-align:right;">{row[f"{prefix}_Presup_Original__fmt"]}</td>',
                 f'<td style="padding:8px;border:1px solid #e2e8f0;text-align:right;font-weight:600;background:#dbeafe;">{row[f"{prefix}_Objetivo_Nuevo__fmt"]}</td>',
-                f'<td style="padding:8px;border:1px solid #e2e8f0;text-align:right;color:{amount_color};font-weight:600;">{row[f"{prefix}_Incremento_$__fmt"]}</td>',
                 f'<td style="padding:8px;border:1px solid #e2e8f0;text-align:right;color:{pct_color};font-weight:700;background:{pct_bg};">{row[f"{prefix}_Incremento_Pct__fmt"]}</td>',
             ])
         body_rows.append(f'<tr style="border-bottom:1px solid #e2e8f0;">{"".join(row_cells)}</tr>')
 
     total = df_export.iloc[-1]
     total_cells = [
-        '<td colspan="2" style="padding:12px;border:1px solid #38bdf8;">TOTAL</td>',
-        f'<td style="padding:12px;border:1px solid #38bdf8;color:#ef4444;text-align:right;">{total["Deficit_Total__fmt"]}</td>',
+        f'<td style="padding:12px;border:1px solid #38bdf8;font-weight:700;{sticky_styles["total1"]}">TOTAL</td>',
+        f'<td style="padding:12px;border:1px solid #38bdf8;{sticky_styles["total2"]}"></td>',
+        f'<td style="padding:12px;border:1px solid #38bdf8;color:#ef4444;text-align:right;{sticky_styles["total3"]}">{total["Faltante_Proyectado__fmt"]}</td>',
+        f'<td style="padding:12px;border:1px solid #38bdf8;text-align:right;{sticky_styles["total4"]}">{total["Presupuesto_Total_Anio__fmt"]}</td>',
     ]
     for month in remaining_months:
         prefix = MONTH_ABBR[month]
         total_cells.extend([
-            f'<td style="padding:10px;border:1px solid #38bdf8;text-align:right;">{total[f"{prefix}_Deficit__fmt"]}</td>',
             f'<td style="padding:10px;border:1px solid #38bdf8;text-align:right;">{total[f"{prefix}_Presup_Original__fmt"]}</td>',
             f'<td style="padding:10px;border:1px solid #38bdf8;text-align:right;">{total[f"{prefix}_Objetivo_Nuevo__fmt"]}</td>',
-            f'<td style="padding:10px;border:1px solid #38bdf8;text-align:right;color:#ef4444;">{total[f"{prefix}_Incremento_$__fmt"]}</td>',
             f'<td style="padding:10px;border:1px solid #38bdf8;text-align:right;color:#dc2626;">{total[f"{prefix}_Incremento_Pct__fmt"]}</td>',
         ])
 
-    total_deficit_fmt = total['Deficit_Total__fmt']
-    period_text = f"{period_label} {ref_year}"
+    total_faltante_fmt = total['Faltante_Proyectado__fmt']
+    period_text = f"{MONTH_HEADER[remaining_months[0]].title()} - {MONTH_HEADER[remaining_months[-1]].title()} {ref_year}"
+    accumulated_label = _accumulated_period_label(ref_year, cutoff_date)
 
     return f"""
-<div class="distribucion-container" style="overflow-x:auto;margin-top:20px;">
+<style>
+.distribucion-container {{
+  overflow-x: auto;
+  overflow-y: visible;
+  max-width: 100%;
+  margin-top: 20px;
+  border: 1px solid #e2e8f0;
+  border-radius: 8px;
+  box-shadow: 0 1px 3px rgba(0,0,0,0.1);
+  -webkit-overflow-scrolling: touch;
+  scrollbar-width: auto;
+  scrollbar-color: #38bdf8 #f1f5f9;
+}}
+.distribucion-container::-webkit-scrollbar {{
+  height: 12px;
+  background-color: #f1f5f9;
+  border-radius: 6px;
+}}
+.distribucion-container::-webkit-scrollbar-thumb {{
+  background: linear-gradient(90deg, #38bdf8, #0284c7);
+  border-radius: 6px;
+  border: 2px solid #f1f5f9;
+}}
+.distribucion-container::-webkit-scrollbar-thumb:hover {{
+  background: linear-gradient(90deg, #0284c7, #075985);
+}}
+.distribucion-container::-webkit-scrollbar-track {{
+  background-color: #f1f5f9;
+  border-radius: 6px;
+}}
+</style>
+<div style="margin-top:20px;">
   <div style="background:linear-gradient(135deg, #033b63 0%, #0a5a8a 100%);padding:16px;border-radius:8px 8px 0 0;color:#fff;">
-    <h4 style="margin:0 0 8px 0;font-size:18px;">📅 Distribución Mensual del Déficit</h4>
+    <div style="display:flex;justify-content:space-between;gap:12px;align-items:flex-start;flex-wrap:wrap;">
+      <h4 style="margin:0;font-size:18px;">📅 Distribución Mensual del Faltante Proyectado</h4>
+      <div style="font-size:12px;padding:6px 10px;background:rgba(255,255,255,0.12);border-radius:999px;">↔️ Desliza para ver todos los meses</div>
+    </div>
     <div style="display:flex;gap:24px;flex-wrap:wrap;margin-top:12px;">
       <div>
-        <div style="font-size:12px;opacity:0.8;">Déficit Total a Distribuir</div>
-        <div style="font-size:24px;font-weight:700;">{total_deficit_fmt}</div>
+        <div style="font-size:12px;opacity:0.8;">Faltante Total a Distribuir</div>
+        <div style="font-size:24px;font-weight:700;">{total_faltante_fmt}</div>
+        <div style="font-size:11px;opacity:0.7;">(Calculado {html.escape(accumulated_label)})</div>
       </div>
       <div>
-        <div style="font-size:12px;opacity:0.8;">Período</div>
+        <div style="font-size:12px;opacity:0.8;">Período de Distribución</div>
         <div style="font-size:16px;font-weight:600;">{html.escape(period_text)}</div>
       </div>
       <div>
@@ -289,17 +349,24 @@ def build_distribution_html(
       </div>
     </div>
     <p style="font-size:13px;margin:12px 0 0 0;opacity:0.9;line-height:1.5;">
-      ℹ️ La distribución se basa en el peso del presupuesto mensual.
+      ℹ️ El <strong>Faltante Proyectado</strong> es la diferencia entre el presupuesto y la producción real
+      acumulada hasta el mes anterior al corte.
+      Se distribuye proporcionalmente en los meses visibles según el peso del presupuesto mensual.
       El <strong>Incremento %</strong> indica cuánto más debe producir cada sucursal/línea
-      sobre su presupuesto original para compensar su parte del déficit.
+      sobre su presupuesto original para compensar su parte del faltante.
     </p>
+    <div style="margin-top:12px;padding:8px;background:rgba(255,255,255,0.1);border-radius:4px;font-size:12px;">
+      💡 <strong>Tip:</strong> usa la barra horizontal inferior para navegar la matriz y mantener visibles las primeras columnas.
+    </div>
   </div>
-  <table style="width:100%;border-collapse:collapse;font-size:12px;">
+  <div class="distribucion-container">
+  <table style="width:max-content;min-width:100%;border-collapse:separate;border-spacing:0;font-size:12px;background:#fff;">
     <thead>
       <tr style="background:#1e3a5f;color:#fff;">
-        <th rowspan="2" style="padding:12px;border:1px solid #2d5a7f;">Sucursal</th>
-        <th rowspan="2" style="padding:12px;border:1px solid #2d5a7f;">Línea</th>
-        <th rowspan="2" style="padding:12px;border:1px solid #2d5a7f;">Déficit Total</th>
+        <th rowspan="2" style="padding:12px;border:1px solid #2d5a7f;min-width:210px;{sticky_styles["head1"]}">Sucursal</th>
+        <th rowspan="2" style="padding:12px;border:1px solid #2d5a7f;min-width:150px;{sticky_styles["head2"]}">Línea</th>
+        <th rowspan="2" style="padding:12px;border:1px solid #2d5a7f;min-width:190px;{sticky_styles["head3"]}">Faltante<br/>Proyectado</th>
+        <th rowspan="2" style="padding:12px;border:1px solid #2d5a7f;min-width:210px;{sticky_styles["head4"]}">Presupuesto<br/>Total Año</th>
         {header_months}
       </tr>
       <tr style="background:#1e3a5f;color:#fff;">{header_metrics}</tr>
@@ -311,12 +378,13 @@ def build_distribution_html(
       </tr>
     </tfoot>
   </table>
+  </div>
   <div style="padding:14px;background:#f8fafc;border-top:2px solid #e2e8f0;border-radius:0 0 8px 8px;">
     <div style="display:grid;grid-template-columns:repeat(auto-fit,minmax(250px,1fr));gap:12px;font-size:12px;line-height:1.6;">
-      <div><strong>📊 Déficit Mes:</strong> Porción del déficit asignada a ese mes</div>
       <div><strong>💰 Presup. Original:</strong> Presupuesto inicial del mes</div>
-      <div><strong>🎯 Objetivo Nuevo:</strong> Meta ajustada (Original + Déficit)</div>
+      <div><strong>🎯 Objetivo Nuevo:</strong> Presupuesto original más la porción del faltante distribuido</div>
       <div><strong>📈 Incremento %:</strong> Porcentaje adicional requerido</div>
+      <div><strong>✅ Presupuesto Total Año:</strong> Presupuesto acumulado hasta el corte anterior + nuevos objetivos del período mostrado</div>
     </div>
     <div style="margin-top:12px;padding:10px;background:#fff3cd;border-left:4px solid #ffc107;border-radius:4px;">
       <strong>⚠️ Interpretación:</strong> Un <strong>Incremento %</strong> positivo indica cuánto más debe producirse sobre el presupuesto original del mes.
