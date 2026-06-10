@@ -48,6 +48,9 @@ POSITIVE_PCT_TEXT_COLOR = '#dc2626'
 NEGATIVE_PCT_TEXT_COLOR = '#15803d'
 POSITIVE_PCT_BG = '#fef2f2'
 NEGATIVE_PCT_BG = '#dcfce7'
+DEUDA_HEADER_BG = '#7f1d1d'
+DEUDA_CELL_COLOR = '#dc2626'
+DEUDA_CELL_BG = '#fee2e2'
 MONTH_GROUP_MIN_WIDTH = 360  # 4 columnas visibles por mes × 90px
 STICKY_COL1_WIDTH = 140
 STICKY_COL2_WIDTH = 110
@@ -270,7 +273,7 @@ def build_distribution_html(
         (
             '<th style="padding:8px;border:1px solid #2d5a7f;font-size:11px;min-width:90px;max-width:90px;">Presup.<br/>Original</th>'
             '<th style="padding:8px;border:1px solid #2d5a7f;font-size:11px;min-width:90px;max-width:90px;">Objetivo<br/>Nuevo</th>'
-            '<th style="padding:8px;border:1px solid #2d5a7f;font-size:11px;min-width:90px;max-width:90px;background:#7f1d1d;color:#fff;">Deuda<br/>$</th>'
+            f'<th style="padding:8px;border:1px solid #2d5a7f;font-size:11px;min-width:90px;max-width:90px;background:{DEUDA_HEADER_BG};color:#fff;">Deuda<br/>$</th>'
             '<th style="padding:8px;border:1px solid #2d5a7f;font-size:11px;min-width:90px;max-width:90px;">Increm.<br/>%</th>'
         )
         for _month in remaining_months
@@ -308,7 +311,7 @@ def build_distribution_html(
             row_cells.extend([
                 f'<td style="padding:6px 4px;border:1px solid #e2e8f0;text-align:right;min-width:90px;max-width:90px;font-size:11px;">{row[f"{prefix}_Presup_Original__fmt"]}</td>',
                 f'<td style="padding:6px 4px;border:1px solid #e2e8f0;text-align:right;font-weight:600;background:#dbeafe;min-width:90px;max-width:90px;font-size:11px;">{row[f"{prefix}_Objetivo_Nuevo__fmt"]}</td>',
-                f'<td style="padding:6px 4px;border:1px solid #e2e8f0;text-align:right;font-weight:600;color:#dc2626;background:#fee2e2;min-width:90px;max-width:90px;font-size:11px;">{row[f"{prefix}_Deuda__fmt"]}</td>',
+                f'<td style="padding:6px 4px;border:1px solid #e2e8f0;text-align:right;font-weight:600;color:{DEUDA_CELL_COLOR};background:{DEUDA_CELL_BG};min-width:90px;max-width:90px;font-size:11px;">{row[f"{prefix}_Deuda__fmt"]}</td>',
                 f'<td style="padding:6px 4px;border:1px solid #e2e8f0;text-align:right;color:{pct_color};font-weight:700;background:{pct_bg};min-width:90px;max-width:90px;font-size:11px;">{row[f"{prefix}_Incremento_Pct__fmt"]}</td>',
             ])
         body_rows.append(f'<tr style="border-bottom:1px solid #e2e8f0;">{"".join(row_cells)}</tr>')
@@ -325,7 +328,7 @@ def build_distribution_html(
         total_cells.extend([
             f'<td style="padding:6px 4px;border:1px solid #38bdf8;text-align:right;min-width:90px;max-width:90px;font-size:11px;">{total[f"{prefix}_Presup_Original__fmt"]}</td>',
             f'<td style="padding:6px 4px;border:1px solid #38bdf8;text-align:right;min-width:90px;max-width:90px;font-size:11px;">{total[f"{prefix}_Objetivo_Nuevo__fmt"]}</td>',
-            f'<td style="padding:6px 4px;border:1px solid #38bdf8;text-align:right;font-weight:700;color:#dc2626;background:#fee2e2;min-width:90px;max-width:90px;font-size:11px;">{total[f"{prefix}_Deuda__fmt"]}</td>',
+            f'<td style="padding:6px 4px;border:1px solid #38bdf8;text-align:right;font-weight:700;color:{DEUDA_CELL_COLOR};background:{DEUDA_CELL_BG};min-width:90px;max-width:90px;font-size:11px;">{total[f"{prefix}_Deuda__fmt"]}</td>',
             f'<td style="padding:6px 4px;border:1px solid #38bdf8;text-align:right;color:#dc2626;min-width:90px;max-width:90px;font-size:11px;">{total[f"{prefix}_Incremento_Pct__fmt"]}</td>',
         ])
 
