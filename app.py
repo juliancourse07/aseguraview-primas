@@ -642,8 +642,8 @@ def render_monthly_distribution_fragment(
             st.info("📊 No se puede construir la distribución porque no existe la columna PRESUPUESTO.")
             return pd.DataFrame(), tuple()
 
-        periodo_actual = pd.Timestamp(year=fecha_corte.year, month=fecha_corte.month, day=1)
-        cache_key = _distribution_cache_key(quarter_sel, periodo_actual, filters)
+        periodo_referencia = pd.Timestamp(year=fecha_corte.year, month=fecha_corte.month, day=1)
+        cache_key = _distribution_cache_key(quarter_sel, periodo_referencia, filters)
         cache_store = st.session_state.setdefault('distribucion_cache', {})
         cache_hit = cache_key in cache_store
 

@@ -47,6 +47,7 @@ POSITIVE_PCT_TEXT_COLOR = '#dc2626'
 NEGATIVE_PCT_TEXT_COLOR = '#15803d'
 POSITIVE_PCT_BG = '#fef2f2'
 NEGATIVE_PCT_BG = '#dcfce7'
+MONTH_GROUP_MIN_WIDTH = 330  # 3 subcolumnas × ~110px
 
 
 def get_remaining_months(cutoff_month: int, meses_quarter: tuple[int, ...] | list[int]) -> tuple[int, ...]:
@@ -66,8 +67,6 @@ def _previous_cutoff_period(ref_year: int, cutoff_date: pd.Timestamp) -> tuple[i
 def _accumulated_period_label(ref_year: int, cutoff_date: pd.Timestamp) -> str:
     """Construye etiqueta del período acumulado usado para el faltante."""
     previous_year, previous_month = _previous_cutoff_period(ref_year, cutoff_date)
-    if previous_month == 12 and previous_year != int(ref_year):
-        return f"Enero - {MONTH_HEADER[previous_month].title()} {previous_year}"
     return f"Enero - {MONTH_HEADER[previous_month].title()} {previous_year}"
 
 
@@ -228,7 +227,7 @@ def build_distribution_html(
             df_export[f'{col}__fmt'] = df_export[col].map(_fmt_signed_pct)
 
     header_months = ''.join(
-        f'<th colspan="3" style="padding:12px;border:1px solid #2d5a7f;background:#0a5a8a;min-width:330px;">{MONTH_HEADER[month]}</th>'
+        f'<th colspan="3" style="padding:12px;border:1px solid #2d5a7f;background:#0a5a8a;min-width:{MONTH_GROUP_MIN_WIDTH}px;">{MONTH_HEADER[month]}</th>'
         for month in remaining_months
     )
     header_metrics = ''.join(
