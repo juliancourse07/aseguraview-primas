@@ -60,6 +60,9 @@ _HEATMAP_MIN_BLEND_RATIO = 0.2
 _HEATMAP_BLEND_RANGE = 0.8
 _DETAILED_CHART_HEIGHT = 500
 _DETAILED_FORECAST_CACHE_TTL_SECONDS = 3600
+_INCREMENT_PCT_HIGH_THRESHOLD = 50
+_INCREMENT_PCT_MEDIUM_THRESHOLD = 25
+_MAX_DISTRIBUTION_CACHE_SIZE = 12
 
 
 def _fragment(func):
@@ -513,15 +516,19 @@ def _apply_increment_pct_conditional_formatting(
         cell_range = f"{col_letter}2:{col_letter}{data_end_row}"
         worksheet.conditional_formatting.add(
             cell_range,
-            CellIsRule(operator='greaterThan', formula=['50'], fill=red_fill),
+            CellIsRule(operator='greaterThan', formula=[str(_INCREMENT_PCT_HIGH_THRESHOLD)], fill=red_fill),
         )
         worksheet.conditional_formatting.add(
             cell_range,
-            CellIsRule(operator='between', formula=['25', '50'], fill=orange_fill),
+            CellIsRule(
+                operator='between',
+                formula=[str(_INCREMENT_PCT_MEDIUM_THRESHOLD), str(_INCREMENT_PCT_HIGH_THRESHOLD)],
+                fill=orange_fill,
+            ),
         )
         worksheet.conditional_formatting.add(
             cell_range,
-            CellIsRule(operator='lessThan', formula=['25'], fill=green_fill),
+            CellIsRule(operator='lessThan', formula=[str(_INCREMENT_PCT_MEDIUM_THRESHOLD)], fill=green_fill),
         )
 
 
@@ -660,7 +667,7 @@ def render_monthly_distribution_fragment(
                     cutoff_month=periodo_actual.month,
                     meses_quarter=meses_quarter,
                 )
-            if len(cache_store) >= 12:
+            if len(cache_store) >= _MAX_DISTRIBUTION_CACHE_SIZE:
                 first_key = next(iter(cache_store))
                 cache_store.pop(first_key, None)
             cache_store[cache_key] = (df_distribution, remaining_months)

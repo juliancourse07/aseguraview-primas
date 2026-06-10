@@ -41,6 +41,13 @@ MONTH_HEADER = {
     12: "DICIEMBRE",
 }
 
+POSITIVE_INCREMENT_COLOR = '#ef4444'
+NEGATIVE_INCREMENT_COLOR = '#15803d'
+POSITIVE_PCT_TEXT_COLOR = '#dc2626'
+NEGATIVE_PCT_TEXT_COLOR = '#15803d'
+POSITIVE_PCT_BG = '#fef2f2'
+NEGATIVE_PCT_BG = '#dcfce7'
+
 
 def get_remaining_months(cutoff_month: int, meses_quarter: tuple[int, ...] | list[int]) -> tuple[int, ...]:
     """Devuelve meses restantes del año respetando el filtro de quarter."""
@@ -164,7 +171,7 @@ def append_distribution_totals(
         total_row[f'{prefix}_Presup_Original'] = budget_total
         total_row[f'{prefix}_Objetivo_Nuevo'] = budget_total + deficit_total
         total_row[f'{prefix}_Incremento_$'] = deficit_total
-        total_row[f'{prefix}_Incremento_Pct'] = (deficit_total / budget_total * 100.0) if budget_total else 0.0
+        total_row[f'{prefix}_Incremento_Pct'] = _safe_increment_pct(deficit_total, budget_total)
 
     return pd.concat([df_distribution, pd.DataFrame([total_row])], ignore_index=True)
 
@@ -177,6 +184,10 @@ def _fmt_signed_cop(value: float) -> str:
 def _fmt_signed_pct(value: float) -> str:
     sign = '+' if value > 0 else '-' if value < 0 else ''
     return f"{sign}{abs(float(value)):.1f}%"
+
+
+def _safe_increment_pct(deficit_value: float, budget_value: float) -> float:
+    return float((deficit_value / budget_value) * 100.0) if budget_value else 0.0
 
 
 def build_distribution_html(
@@ -225,9 +236,9 @@ def build_distribution_html(
         for month in remaining_months:
             prefix = MONTH_ABBR[month]
             increment_pct = row[f'{prefix}_Incremento_Pct']
-            pct_color = '#dc2626' if increment_pct >= 0 else '#15803d'
-            pct_bg = '#fef2f2' if increment_pct >= 0 else '#dcfce7'
-            amount_color = '#ef4444' if row[f'{prefix}_Incremento_$'] >= 0 else '#15803d'
+            pct_color = POSITIVE_PCT_TEXT_COLOR if increment_pct >= 0 else NEGATIVE_PCT_TEXT_COLOR
+            pct_bg = POSITIVE_PCT_BG if increment_pct >= 0 else NEGATIVE_PCT_BG
+            amount_color = POSITIVE_INCREMENT_COLOR if row[f'{prefix}_Incremento_$'] >= 0 else NEGATIVE_INCREMENT_COLOR
             row_cells.extend([
                 f'<td style="padding:8px;border:1px solid #e2e8f0;text-align:right;background:#fef2f2;">{row[f"{prefix}_Deficit__fmt"]}</td>',
                 f'<td style="padding:8px;border:1px solid #e2e8f0;text-align:right;">{row[f"{prefix}_Presup_Original__fmt"]}</td>',
