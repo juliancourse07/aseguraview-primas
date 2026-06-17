@@ -1262,13 +1262,13 @@ with tabs[1]:
     # Crear tabla de resumen
     resumen_lineas = []
     if vista_mes == "Año":
-        previo_col = f"Previo {ref_year - 1} Año"
-        actual_col = f"Actual {ref_year} Año"
+        previo_col = f"Producción {ref_year - 1} Año"
+        actual_col = f"Producción {ref_year} Año"
     elif vista_mes == "Mes":
-        previo_col = f"Previo {ref_year - 1} Mes"
-        actual_col = f"Actual {ref_year} Mes"
+        previo_col = f"Producción {ref_year - 1} Mes"
+        actual_col = f"Producción {ref_year} Mes"
     else:
-        previo_col = f"Previo {ref_year - 1} Acumulado Mes"
+        previo_col = f"Producción {ref_year - 1} Acumulado Mes"
         actual_col = f"Actual {ref_year} Acumulado Mes"
 
     faltante_col = "Faltante proyectado"
@@ -1278,7 +1278,7 @@ with tabs[1]:
     req_dia_pres_col = "Req x día Pres (días calendario)"
     
     for linea in lineas_disponibles:
-        df_linea = df_periodo[df_periodo['LINEA_PLUS'] == linea]
+        df_linea = df_periodo[df_periodo['LINEA'] == linea]
         
         if df_linea.empty:
             continue
