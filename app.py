@@ -1585,7 +1585,22 @@ with tabs[1]:
         html_table = '<div style="overflow-x:auto;"><table style="width:100%;border-collapse:collapse;font-size:13px;">'
         html_table += '<thead><tr style="background:#033b63;color:#fff;">'
         for col in df_display.columns:
-            html_table += f'<th style="padding:10px;text-align:left;border-bottom:2px solid #444;">{col}</th>'
+            if col == 'LINEA_PLUS':
+                display_label = 'LINEA'
+            elif col.startswith('Previo'):
+                display_label = col.replace('Previo', 'Producción', 1)
+            elif col.startswith('Actual'):
+                display_label = col.replace('Actual', 'Producción', 1)
+            else:
+                display_label = col
+            if col == proyectado_vs_pronostico_col:
+                tooltip_text = ("Diferencia entre el Presupuesto y el Pronóstico del mes. "
+                                "Un valor positivo indica que el pronóstico está POR DEBAJO del presupuesto "
+                                "(riesgo de no cumplir la meta). "
+                                "Un valor negativo indica que el pronóstico SUPERA el presupuesto (buena señal).")
+                display_label = (f'{display_label} <span title="{tooltip_text}" '
+                                 'style="cursor:help;font-size:14px;opacity:0.85;">❓</span>')
+            html_table += f'<th style="padding:10px;text-align:left;border-bottom:2px solid #444;">{display_label}</th>'
         html_table += '</tr></thead><tbody>'
         
         for idx, row in df_display.iterrows():
