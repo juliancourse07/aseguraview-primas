@@ -1278,7 +1278,7 @@ with tabs[1]:
     req_dia_pres_col = "Req x día Pres (días calendario)"
     
     for linea in lineas_disponibles:
-        df_linea = df_periodo[df_periodo['LINEA'] == linea]
+        df_linea = df_periodo[df_periodo['LINEA_PLUS'] == linea]
         
         if df_linea.empty:
             continue
