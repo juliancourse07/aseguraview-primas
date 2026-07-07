@@ -6,6 +6,8 @@ Aplicación Streamlit refactorizada y modular
 import warnings
 warnings.filterwarnings("ignore")
 
+import base64
+import os
 import streamlit as st
 import streamlit.components.v1 as components
 import pandas as pd
@@ -684,6 +686,15 @@ def render_monthly_distribution_fragment(
         return df_distribution, remaining_months
 
 
+def _img_to_b64(path: str) -> str:
+    """Carga una imagen local y la retorna como string base64 para embeber en HTML/CSS."""
+    try:
+        with open(path, "rb") as f:
+            return base64.b64encode(f.read()).decode()
+    except FileNotFoundError:
+        return ""
+
+
 # ====================  PAGE CONFIG ====================
 st.set_page_config(
     page_title=PAGE_TITLE,
@@ -695,7 +706,9 @@ st.markdown("""
 <style>:root{--bg:#f8fafc;--fg:#1e293b;--accent:#0284c7;--muted:#64748b;--card:#ffffff;--border:#e2e8f0;--up:#16a34a;--down:#ef4444;--near:#f59e0b;}body,.stApp{background:var(--bg);color:var(--fg);}.block-container{padding-top:.6rem;}.card{background:var(--card);border:1px solid var(--border);border-radius:12px;padding:12px;margin-bottom:12px;box-shadow:0 1px 3px rgba(0,0,0,0.1);}.table-wrap{overflow:auto;border:1px solid var(--border);border-radius:12px;background:var(--card);padding:6px;}.tbl{width:100%;border-collapse:collapse;font-size:14px;color:var(--fg);}.tbl thead th{position:sticky;top:0;background:#f1f5f9;color:#334155;padding:10px;border-bottom:2px solid var(--border);text-align:left;}.tbl td{padding:8px;border-bottom:1px dashed var(--border);white-space:nowrap;color:var(--fg);}.bad{color:var(--down);font-weight:700;}.ok{color:var(--up);font-weight:700;}.near{color:var(--near);font-weight:700;}.muted{color:var(--muted);}.small{font-size:12px;color:var(--muted);}.heatmap-shell{border:1px solid var(--border);border-radius:18px;overflow:hidden;background:linear-gradient(180deg,#fff,#f8fafc);box-shadow:0 4px 14px rgba(15,23,42,0.08);}.heatmap-banner{display:flex;justify-content:space-between;align-items:center;gap:12px;padding:14px 18px;background:linear-gradient(90deg,rgba(2,132,199,0.10),rgba(248,250,252,0.95) 65%,rgba(245,158,11,0.08));border-bottom:1px solid var(--border);}.heatmap-title{font-size:15px;font-weight:700;color:#0f172a;}.heatmap-legend{font-size:12px;color:#475569;text-align:right;}.heatmap-grid{display:grid;align-items:stretch;}.heatmap-total-label,.heatmap-total-cell,.heatmap-corner-label,.heatmap-col-head,.heatmap-row-label,.heatmap-cell{position:relative;display:flex;align-items:center;justify-content:center;min-height:64px;padding:10px 12px;text-align:center;border-right:1px solid var(--border);border-bottom:1px solid var(--border);}.heatmap-total-label,.heatmap-corner-label,.heatmap-row-label{justify-content:flex-start;}.heatmap-total-label{font-weight:800;color:#0f172a;background:linear-gradient(135deg,rgba(2,132,199,0.12),rgba(148,163,184,0.10));}.heatmap-total-cell{flex-direction:column;gap:4px;}.heatmap-total-caption{font-size:11px;letter-spacing:.08em;text-transform:uppercase;opacity:.75;color:#475569;}.heatmap-total-value{font-size:17px;font-weight:800;line-height:1.1;}.heatmap-corner-label{font-size:12px;font-weight:700;letter-spacing:.08em;text-transform:uppercase;color:#475569;background:#f8fafc;}.heatmap-col-head{min-height:56px;background:#f1f5f9;color:#0f172a;font-size:12px;font-weight:700;letter-spacing:.08em;text-transform:uppercase;}.heatmap-row-label{font-size:13px;font-weight:600;color:#0f172a;background:#f8fafc;}.heatmap-cell{font-size:13px;font-weight:700;}.heatmap-cell-positive,.heatmap-total-positive{z-index:0;}.heatmap-cell-positive::after,.heatmap-total-positive::after{content:"";position:absolute;inset:8px;border-radius:12px;border:1px solid rgba(239,68,68,0.34);animation:heatPulse 1.35s ease-in-out infinite;pointer-events:none;}.heatmap-note{padding:12px 16px;font-size:12px;color:#475569;background:rgba(241,245,249,0.85);}@keyframes heatPulse{0%,100%{transform:scale(1);opacity:.22;box-shadow:0 0 0 0 rgba(239,68,68,0);}45%{transform:scale(1.03);opacity:.58;box-shadow:0 0 0 8px rgba(239,68,68,0.10);}75%{transform:scale(1.01);opacity:.34;box-shadow:0 0 0 3px rgba(239,68,68,0.16);}}@media (prefers-reduced-motion: reduce){.heatmap-cell-positive::after,.heatmap-total-positive::after{animation:none;opacity:.35;box-shadow:0 0 0 2px rgba(239,68,68,0.12);}}</style>
 """, unsafe_allow_html=True)
 
-# ==================== LOAD DATA ====================
+# ==================== LOAD BRAND IMAGES ====================
+_BANNER_SDE_B64 = _img_to_b64("banner_sde.png")
+_LOGO_70_B64 = _img_to_b64("logo_70_anios.png")
 @st.cache_data(ttl=3600, show_spinner=False, max_entries=_DATA_CACHE_MAX_ENTRIES)
 def load_and_process_data():
     """Carga y procesa datos con caché para reducir recargas y mejorar rendimiento."""
@@ -1131,27 +1144,26 @@ if not st.session_state["visit_counted"]:
 df, fecha_corte = load_and_process_data()
 
 # ==================== HEADER ====================
+_logo_70_tag = (
+    f'<img src="data:image/png;base64,{_LOGO_70_B64}" '
+    f'style="height:54px;object-fit:contain;border-radius:6px;" alt="70 años Seguros del Estado"/>'
+    if _LOGO_70_B64 else
+    '<div style="font-size:22px;font-weight:900;color:#d4a017;">70<br><span style=\'font-size:9px;letter-spacing:1px;\'>AÑOS</span></div>'
+)
+
 st.markdown(f"""
 <div style="display:flex;align-items:center;justify-content:space-between;gap:18px;margin-bottom:6px;
      background:linear-gradient(90deg,#071428 0%,#0d1e3d 80%,#0a1628 100%);
-     border-radius:10px;padding:12px 24px;box-shadow:0 2px 10px rgba(0,0,0,0.3);">
+     border-radius:10px;padding:10px 24px;box-shadow:0 2px 10px rgba(0,0,0,0.3);">
   <div style="display:flex;align-items:center;gap:14px;">
-    <div style="font-size:26px;font-weight:800;color:#f3f4f6">{PAGE_ICON} {PAGE_TITLE}</div>
+    <div style="font-size:24px;font-weight:800;color:#f3f4f6">{PAGE_ICON} {PAGE_TITLE}</div>
     <div style="opacity:.85;color:#94b8e0;font-size:13px;">Corte: {fecha_corte.strftime('%d/%m/%Y')}</div>
   </div>
-  <div style="display:flex;align-items:center;gap:10px;">
-    <div style="text-align:right;">
-      <div style="font-size:12px;font-weight:700;color:#e2eaf7;line-height:1.2;">SEGUROS DEL ESTADO</div>
-      <div style="font-size:11px;color:#d4a017;font-style:italic;">Decisiones con respaldo</div>
-    </div>
-    <div style="display:flex;flex-direction:column;align-items:center;border-left:1px solid rgba(212,160,23,0.4);padding-left:10px;">
-      <div style="font-size:22px;font-weight:900;color:#d4a017;line-height:1;">70</div>
-      <div style="font-size:9px;color:#c8a020;font-weight:600;letter-spacing:1px;">AÑOS</div>
-    </div>
+  <div style="display:flex;align-items:center;gap:12px;">
+    {_logo_70_tag}
   </div>
 </div>
 """, unsafe_allow_html=True)
-
 st.caption("Nowcast, cierre estimado del año, ejecución vs presupuesto")
 
 # ==================== SIDEBAR ====================
@@ -1186,7 +1198,6 @@ tabs = st.tabs(["🏠 Presentación", "📈 Primas", "🏛️ FIANZAS"])
 
 # ========== TAB 1: PRESENTACIÓN ==========
 with tabs[0]:
-    # Hero con imagen de fondo y overlay azul oscuro (estilo Seguros del Estado)
     st.markdown("""
     <style>
     .hero-section {
@@ -1196,7 +1207,6 @@ with tabs[0]:
         border-radius: 18px;
         overflow: hidden;
         margin-bottom: 24px;
-        background: linear-gradient(135deg, #0a1628 0%, #0d2044 40%, #0f2e5a 70%, #1a3a6b 100%);
         box-shadow: 0 8px 32px rgba(0,0,0,0.5);
         display: flex;
         flex-direction: column;
@@ -1208,7 +1218,6 @@ with tabs[0]:
         width: 100%;
         height: 100%;
         object-fit: cover;
-        opacity: 0.18;
         z-index: 0;
     }
     .hero-overlay {
@@ -1216,24 +1225,11 @@ with tabs[0]:
         inset: 0;
         background: linear-gradient(
             to bottom,
-            rgba(10,22,40,0.55) 0%,
-            rgba(10,22,40,0.70) 60%,
+            rgba(10,22,40,0.25) 0%,
+            rgba(10,22,40,0.55) 50%,
             rgba(10,22,40,0.92) 100%
         );
         z-index: 1;
-    }
-    .hero-logo-bar {
-        position: absolute;
-        top: 0; right: 0;
-        z-index: 3;
-        display: flex;
-        align-items: center;
-        gap: 0;
-        padding: 18px 28px 0 0;
-    }
-    .hero-logo-bar img {
-        height: 56px;
-        object-fit: contain;
     }
     .hero-content {
         position: relative;
@@ -1241,7 +1237,7 @@ with tabs[0]:
         padding: 36px 44px 40px 44px;
     }
     .hero-tagline {
-        font-size: 15px;
+        font-size: 13px;
         color: #c8ddf7;
         letter-spacing: 2px;
         text-transform: uppercase;
@@ -1249,35 +1245,24 @@ with tabs[0]:
         font-weight: 500;
     }
     .hero-title {
-        font-size: 42px;
+        font-size: 40px;
         font-weight: 900;
         color: #f3f4f6;
         line-height: 1.1;
         margin-bottom: 6px;
     }
-    .hero-title span {
-        color: #d4a017;
-    }
+    .hero-title span { color: #d4a017; }
     .hero-subtitle {
-        font-size: 16px;
-        color: #94b8e0;
+        font-size: 15px;
+        color: #c8ddf7;
         margin-bottom: 22px;
         font-style: italic;
-    }
-    .hero-curve {
-        display: block;
-        width: 260px;
-        height: 18px;
-        border-bottom: 3px solid #d4a017;
-        border-radius: 0 0 80px 80px;
-        margin-bottom: 28px;
-        opacity: 0.7;
     }
     .hero-pills {
         display: flex;
         flex-wrap: wrap;
         gap: 10px;
-        margin-bottom: 4px;
+        margin-bottom: 8px;
     }
     .hero-pill {
         background: rgba(255,255,255,0.10);
@@ -1292,119 +1277,42 @@ with tabs[0]:
         display: inline-flex;
         align-items: center;
         gap: 7px;
-        background: rgba(212,160,23,0.15);
-        border: 1px solid rgba(212,160,23,0.5);
+        background: rgba(212,160,23,0.18);
+        border: 1px solid rgba(212,160,23,0.55);
         border-radius: 20px;
         padding: 5px 16px;
         font-size: 13px;
         color: #d4a017;
         font-weight: 700;
-        margin-top: 18px;
-    }
-
-    /* Banner 70 años en el header principal */
-    .sde-header-banner {
-        width: 100%;
-        background: linear-gradient(90deg, #071428 0%, #0d1e3d 60%, #0a1628 100%);
-        border-radius: 12px;
-        display: flex;
-        align-items: center;
-        justify-content: space-between;
-        padding: 14px 32px;
-        margin-bottom: 18px;
-        box-shadow: 0 2px 12px rgba(0,0,0,0.3);
-    }
-    .sde-header-left {
-        display: flex;
-        flex-direction: column;
-    }
-    .sde-header-title {
-        font-size: 22px;
-        font-weight: 800;
-        color: #f3f4f6;
-    }
-    .sde-header-sub {
-        font-size: 13px;
-        color: #94b8e0;
-    }
-    .sde-header-right {
-        display: flex;
-        align-items: center;
-        gap: 14px;
-    }
-    .sde-70 {
-        font-size: 32px;
-        font-weight: 900;
-        color: #d4a017;
-        line-height: 1;
-    }
-    .sde-70-label {
-        font-size: 11px;
-        color: #c8a020;
-        font-weight: 600;
-        letter-spacing: 1px;
-        text-transform: uppercase;
-    }
-    .sde-logo-text {
-        font-size: 15px;
-        font-weight: 800;
-        color: #e2eaf7;
-        line-height: 1.2;
-    }
-    .sde-logo-sep {
-        width: 1px;
-        height: 40px;
-        background: rgba(212,160,23,0.4);
-        margin: 0 8px;
-    }
-    .sde-decisions {
-        font-size: 13px;
-        color: #d4a017;
-        font-style: italic;
-        font-weight: 600;
+        margin-top: 16px;
     }
     </style>
     """, unsafe_allow_html=True)
 
     visit_count = st.session_state.get("visit_count", 1)
 
-    # Banner SDE en la presentación
-    st.markdown(f"""
-    <div class="sde-header-banner">
-        <div class="sde-header-left">
-            <div class="sde-header-title">🛡️ AseguraView · Dashboard de Primas</div>
-            <div class="sde-header-sub">Nowcast, cierre estimado del año, ejecución vs presupuesto</div>
-        </div>
-        <div class="sde-header-right">
-            <div style="text-align:center">
-                <div class="sde-logo-text">SEGUROS<br>DEL ESTADO</div>
-            </div>
-            <div class="sde-logo-sep"></div>
-            <div style="text-align:center">
-                <div class="sde-70">70</div>
-                <div class="sde-70-label">AÑOS</div>
-            </div>
-            <div class="sde-logo-sep"></div>
-            <div class="sde-decisions">Decisiones<br>con respaldo</div>
-        </div>
-    </div>
-    """, unsafe_allow_html=True)
+    _bg_img_tag = (
+        f'<img class="hero-bg" src="data:image/png;base64,{_BANNER_SDE_B64}" alt="Seguros del Estado"/>'
+        if _BANNER_SDE_B64 else ""
+    )
+    _bg_fallback_style = (
+        "" if _BANNER_SDE_B64
+        else 'style="background:linear-gradient(135deg,#0a1628 0%,#0d2044 40%,#0f2e5a 70%,#1a3a6b 100%);"'
+    )
 
-    # Hero section de presentación
     st.markdown(f"""
-    <div class="hero-section">
+    <div class="hero-section" {_bg_fallback_style}>
+        {_bg_img_tag}
         <div class="hero-overlay"></div>
         <div class="hero-content">
             <div class="hero-tagline">Dashboard Analítico · Seguros del Estado</div>
-            <div class="hero-title">Bienvenido a<br><span>AseguraView</span></div>
+            <div class="hero-title">Bienvenido a <span>AseguraView</span></div>
             <div class="hero-subtitle">70 años en los que tus decisiones han hecho posible la tranquilidad de muchos</div>
-            <span class="hero-curve"></span>
-            <div style="color:#c8ddf7;font-size:14px;margin-bottom:12px;">En este tablero encontrarás:</div>
             <div class="hero-pills">
                 <span class="hero-pill">📈 Primas: Nowcast del mes actual y proyección de cierre anual</span>
                 <span class="hero-pill">🏛️ FIANZAS: Análisis especial de la línea</span>
             </div>
-            <div class="hero-pills" style="margin-top:10px;">
+            <div class="hero-pills">
                 <span class="hero-pill">✅ Modelos SARIMAX/ARIMA para pronósticos</span>
                 <span class="hero-pill">✅ Análisis por Línea+</span>
                 <span class="hero-pill">✅ Vistas: Mes, Año, Acumulado</span>
