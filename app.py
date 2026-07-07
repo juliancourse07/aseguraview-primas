@@ -1119,17 +1119,40 @@ def render_detailed_forecast_table(forecast_df: pd.DataFrame) -> None:
     st.dataframe(display_df, use_container_width=True, hide_index=True)
 
 
+# ==================== VISIT COUNTER ====================
+if "visit_count" not in st.session_state:
+    st.session_state["visit_count"] = 0
+if "visit_counted" not in st.session_state:
+    st.session_state["visit_counted"] = False
+if not st.session_state["visit_counted"]:
+    st.session_state["visit_count"] += 1
+    st.session_state["visit_counted"] = True
+
 df, fecha_corte = load_and_process_data()
 
 # ==================== HEADER ====================
 st.markdown(f"""
-<div style="display:flex;align-items:center;gap:18px;margin-bottom:6px">
-  <div style="font-size:26px;font-weight:800;color:#f3f4f6">{PAGE_ICON} {PAGE_TITLE}</div>
-  <div style="opacity:.85;color:var(--muted);">Corte: {fecha_corte.strftime('%d/%m/%Y')}</div>
+<div style="display:flex;align-items:center;justify-content:space-between;gap:18px;margin-bottom:6px;
+     background:linear-gradient(90deg,#071428 0%,#0d1e3d 80%,#0a1628 100%);
+     border-radius:10px;padding:12px 24px;box-shadow:0 2px 10px rgba(0,0,0,0.3);">
+  <div style="display:flex;align-items:center;gap:14px;">
+    <div style="font-size:26px;font-weight:800;color:#f3f4f6">{PAGE_ICON} {PAGE_TITLE}</div>
+    <div style="opacity:.85;color:#94b8e0;font-size:13px;">Corte: {fecha_corte.strftime('%d/%m/%Y')}</div>
+  </div>
+  <div style="display:flex;align-items:center;gap:10px;">
+    <div style="text-align:right;">
+      <div style="font-size:12px;font-weight:700;color:#e2eaf7;line-height:1.2;">SEGUROS DEL ESTADO</div>
+      <div style="font-size:11px;color:#d4a017;font-style:italic;">Decisiones con respaldo</div>
+    </div>
+    <div style="display:flex;flex-direction:column;align-items:center;border-left:1px solid rgba(212,160,23,0.4);padding-left:10px;">
+      <div style="font-size:22px;font-weight:900;color:#d4a017;line-height:1;">70</div>
+      <div style="font-size:9px;color:#c8a020;font-weight:600;letter-spacing:1px;">AÑOS</div>
+    </div>
+  </div>
 </div>
 """, unsafe_allow_html=True)
 
-st.caption("Nowcast, cierre estimado del año, ejecución vs presupuesto y propuesta 2026")
+st.caption("Nowcast, cierre estimado del año, ejecución vs presupuesto")
 
 # ==================== SIDEBAR ====================
 filters = render_sidebar(df, fecha_corte)
@@ -1159,30 +1182,236 @@ if filters.get('suc_agrupadas') and 'Suc_agrupada' in df_filtered.columns:
 df_filtered = df_filtered[df_filtered['FECHA'].dt.year <= filters['anio_analisis']]
 
 # ==================== TABS ====================
-tabs = st.tabs(["🏠 Presentación", "📈 Primas", "🏛️ FIANZAS", "📊 Presupuesto 2026"])
+tabs = st.tabs(["🏠 Presentación", "📈 Primas", "🏛️ FIANZAS"])
 
 # ========== TAB 1: PRESENTACIÓN ==========
 with tabs[0]:
+    # Hero con imagen de fondo y overlay azul oscuro (estilo Seguros del Estado)
     st.markdown("""
-    <div class="card">
-      <h3 style="margin:0 0 8px 0">Bienvenido a AseguraView</h3>
-      <div style="color:#cfe7fb;line-height:1.5">
-        En este tablero encontrarás:
-        <ul>
-          <li>📈 <b>Primas:</b> Nowcast del mes actual y proyección de cierre anual</li>
-          <li>🏛️ <b>FIANZAS:</b> Análisis especial de la línea</li>
-          <li>📊 <b>Presupuesto 2026:</b> Propuesta técnica por línea de negocio</li>
-        </ul>
-        <br>
-        <b>Características:</b>
-        <ul>
-          <li>✅ Modelos SARIMAX/ARIMA para pronósticos</li>
-          <li>✅ Análisis por <b>Línea +</b> (simplificado)</li>
-          <li>✅ Vistas: Mes, Año, Acumulado</li>
-          <li>✅ Presupuesto 2026 con XGBoost</li>
-          <li>✅ Nowcast actualizado cada hora</li>
-        </ul>
-      </div>
+    <style>
+    .hero-section {
+        position: relative;
+        width: 100%;
+        min-height: 420px;
+        border-radius: 18px;
+        overflow: hidden;
+        margin-bottom: 24px;
+        background: linear-gradient(135deg, #0a1628 0%, #0d2044 40%, #0f2e5a 70%, #1a3a6b 100%);
+        box-shadow: 0 8px 32px rgba(0,0,0,0.5);
+        display: flex;
+        flex-direction: column;
+        justify-content: flex-end;
+    }
+    .hero-bg {
+        position: absolute;
+        inset: 0;
+        width: 100%;
+        height: 100%;
+        object-fit: cover;
+        opacity: 0.18;
+        z-index: 0;
+    }
+    .hero-overlay {
+        position: absolute;
+        inset: 0;
+        background: linear-gradient(
+            to bottom,
+            rgba(10,22,40,0.55) 0%,
+            rgba(10,22,40,0.70) 60%,
+            rgba(10,22,40,0.92) 100%
+        );
+        z-index: 1;
+    }
+    .hero-logo-bar {
+        position: absolute;
+        top: 0; right: 0;
+        z-index: 3;
+        display: flex;
+        align-items: center;
+        gap: 0;
+        padding: 18px 28px 0 0;
+    }
+    .hero-logo-bar img {
+        height: 56px;
+        object-fit: contain;
+    }
+    .hero-content {
+        position: relative;
+        z-index: 2;
+        padding: 36px 44px 40px 44px;
+    }
+    .hero-tagline {
+        font-size: 15px;
+        color: #c8ddf7;
+        letter-spacing: 2px;
+        text-transform: uppercase;
+        margin-bottom: 8px;
+        font-weight: 500;
+    }
+    .hero-title {
+        font-size: 42px;
+        font-weight: 900;
+        color: #f3f4f6;
+        line-height: 1.1;
+        margin-bottom: 6px;
+    }
+    .hero-title span {
+        color: #d4a017;
+    }
+    .hero-subtitle {
+        font-size: 16px;
+        color: #94b8e0;
+        margin-bottom: 22px;
+        font-style: italic;
+    }
+    .hero-curve {
+        display: block;
+        width: 260px;
+        height: 18px;
+        border-bottom: 3px solid #d4a017;
+        border-radius: 0 0 80px 80px;
+        margin-bottom: 28px;
+        opacity: 0.7;
+    }
+    .hero-pills {
+        display: flex;
+        flex-wrap: wrap;
+        gap: 10px;
+        margin-bottom: 4px;
+    }
+    .hero-pill {
+        background: rgba(255,255,255,0.10);
+        border: 1px solid rgba(212,160,23,0.35);
+        border-radius: 20px;
+        padding: 6px 16px;
+        font-size: 13px;
+        color: #e2eaf7;
+        font-weight: 500;
+    }
+    .visit-badge {
+        display: inline-flex;
+        align-items: center;
+        gap: 7px;
+        background: rgba(212,160,23,0.15);
+        border: 1px solid rgba(212,160,23,0.5);
+        border-radius: 20px;
+        padding: 5px 16px;
+        font-size: 13px;
+        color: #d4a017;
+        font-weight: 700;
+        margin-top: 18px;
+    }
+
+    /* Banner 70 años en el header principal */
+    .sde-header-banner {
+        width: 100%;
+        background: linear-gradient(90deg, #071428 0%, #0d1e3d 60%, #0a1628 100%);
+        border-radius: 12px;
+        display: flex;
+        align-items: center;
+        justify-content: space-between;
+        padding: 14px 32px;
+        margin-bottom: 18px;
+        box-shadow: 0 2px 12px rgba(0,0,0,0.3);
+    }
+    .sde-header-left {
+        display: flex;
+        flex-direction: column;
+    }
+    .sde-header-title {
+        font-size: 22px;
+        font-weight: 800;
+        color: #f3f4f6;
+    }
+    .sde-header-sub {
+        font-size: 13px;
+        color: #94b8e0;
+    }
+    .sde-header-right {
+        display: flex;
+        align-items: center;
+        gap: 14px;
+    }
+    .sde-70 {
+        font-size: 32px;
+        font-weight: 900;
+        color: #d4a017;
+        line-height: 1;
+    }
+    .sde-70-label {
+        font-size: 11px;
+        color: #c8a020;
+        font-weight: 600;
+        letter-spacing: 1px;
+        text-transform: uppercase;
+    }
+    .sde-logo-text {
+        font-size: 15px;
+        font-weight: 800;
+        color: #e2eaf7;
+        line-height: 1.2;
+    }
+    .sde-logo-sep {
+        width: 1px;
+        height: 40px;
+        background: rgba(212,160,23,0.4);
+        margin: 0 8px;
+    }
+    .sde-decisions {
+        font-size: 13px;
+        color: #d4a017;
+        font-style: italic;
+        font-weight: 600;
+    }
+    </style>
+    """, unsafe_allow_html=True)
+
+    visit_count = st.session_state.get("visit_count", 1)
+
+    # Banner SDE en la presentación
+    st.markdown(f"""
+    <div class="sde-header-banner">
+        <div class="sde-header-left">
+            <div class="sde-header-title">🛡️ AseguraView · Dashboard de Primas</div>
+            <div class="sde-header-sub">Nowcast, cierre estimado del año, ejecución vs presupuesto</div>
+        </div>
+        <div class="sde-header-right">
+            <div style="text-align:center">
+                <div class="sde-logo-text">SEGUROS<br>DEL ESTADO</div>
+            </div>
+            <div class="sde-logo-sep"></div>
+            <div style="text-align:center">
+                <div class="sde-70">70</div>
+                <div class="sde-70-label">AÑOS</div>
+            </div>
+            <div class="sde-logo-sep"></div>
+            <div class="sde-decisions">Decisiones<br>con respaldo</div>
+        </div>
+    </div>
+    """, unsafe_allow_html=True)
+
+    # Hero section de presentación
+    st.markdown(f"""
+    <div class="hero-section">
+        <div class="hero-overlay"></div>
+        <div class="hero-content">
+            <div class="hero-tagline">Dashboard Analítico · Seguros del Estado</div>
+            <div class="hero-title">Bienvenido a<br><span>AseguraView</span></div>
+            <div class="hero-subtitle">70 años en los que tus decisiones han hecho posible la tranquilidad de muchos</div>
+            <span class="hero-curve"></span>
+            <div style="color:#c8ddf7;font-size:14px;margin-bottom:12px;">En este tablero encontrarás:</div>
+            <div class="hero-pills">
+                <span class="hero-pill">📈 Primas: Nowcast del mes actual y proyección de cierre anual</span>
+                <span class="hero-pill">🏛️ FIANZAS: Análisis especial de la línea</span>
+            </div>
+            <div class="hero-pills" style="margin-top:10px;">
+                <span class="hero-pill">✅ Modelos SARIMAX/ARIMA para pronósticos</span>
+                <span class="hero-pill">✅ Análisis por Línea+</span>
+                <span class="hero-pill">✅ Vistas: Mes, Año, Acumulado</span>
+                <span class="hero-pill">✅ Nowcast actualizado cada hora</span>
+            </div>
+            <div class="visit-badge">👁️ Visitas en esta sesión: {visit_count}</div>
+        </div>
     </div>
     """, unsafe_allow_html=True)
 
@@ -2026,48 +2255,3 @@ with tabs[2]:
             
             st.dataframe(fc_display_f[['FECHA', 'Pronóstico Mensual', 'Pronóstico Ajustado Garantías', 'Diferencia']], 
                         use_container_width=True, hide_index=True)
-
-# ========== TAB 4: PRESUPUESTO 2026 ==========
-with tabs[3]:
-    st.subheader("📊 Propuesta Presupuesto 2026")
-    
-    ipc_adj = st.number_input(
-        "Ajuste IPC / Incrementos (%)",
-        min_value=-50.0,
-        max_value=200.0,
-        value=4.5,
-        step=0.1,
-        help="Ajuste por inflación o incrementos esperados"
-    )
-    
-    if st.button("🚀 Generar Propuesta 2026"):
-        with st.spinner("Generando presupuesto 2026..."):
-            budget_gen = Budget2026Generator(
-                conservative_factor=filters['conservative_factor'],
-                ipc_adjustment=ipc_adj
-            )
-            
-            budget_table = budget_gen.generate_budget_table(df_filtered, target_year=2026)
-            
-            if not budget_table.empty:
-                budget_display = budget_table.copy()
-                for col in budget_display.columns:
-                    if 'Presupuesto' in col:
-                        budget_display[col] = budget_display[col].apply(fmt_cop)
-                
-                st.markdown("##### Presupuesto 2026 por Línea +")
-                st.dataframe(budget_display, use_container_width=True, hide_index=True)
-                
-                with BytesIO() as output:
-                    with pd.ExcelWriter(output, engine="openpyxl") as writer:
-                        budget_table.to_excel(writer, sheet_name="Presupuesto_2026", index=False)
-                    data_xlsx = output.getvalue()
-                
-                st.download_button(
-                    "⬇️ Descargar Presupuesto 2026",
-                    data=data_xlsx,
-                    file_name="presupuesto_2026.xlsx",
-                    mime="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet"
-                )
-            else:
-                st.warning("No se pudo generar presupuesto con los filtros actuales")
