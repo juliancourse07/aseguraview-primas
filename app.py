@@ -1310,7 +1310,7 @@ with tabs[0]:
         {_bg_img_tag}
         <div class="hero-overlay"></div>
         <div class="hero-content">
-            <div class="hero-tagline">Dashboard Analítico · Seguros del Estado</div>
+            <div class="hero-tagline">Modelo especializado de pronostico comercial · Seguros del Estado</div>
             <div class="hero-title">Bienvenido a <span>AseguraView</span></div>
             <div class="hero-subtitle">70 años en los que tus decisiones han hecho posible la tranquilidad de muchos</div>
             <div class="hero-pills">
