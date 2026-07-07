@@ -692,6 +692,8 @@ def _img_to_b64(path: str) -> str:
         with open(path, "rb") as f:
             return base64.b64encode(f.read()).decode()
     except FileNotFoundError:
+        import warnings as _warnings
+        _warnings.warn(f"Imagen no encontrada: {path}. Se usará el fallback visual CSS.", stacklevel=2)
         return ""
 
 
@@ -1292,7 +1294,7 @@ with tabs[0]:
     visit_count = st.session_state.get("visit_count", 1)
 
     _bg_img_tag = (
-        f'<img class="hero-bg" src="data:image/png;base64,{_BANNER_SDE_B64}" alt="Seguros del Estado"/>'
+        f'<img class="hero-bg" src="data:image/png;base64,{_BANNER_SDE_B64}" alt=""/>'
         if _BANNER_SDE_B64 else ""
     )
     _bg_fallback_style = (
