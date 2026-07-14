@@ -678,7 +678,7 @@ def render_monthly_distribution_fragment(
                 cutoff_date=fecha_corte,
             )
         component_height = min(max(520, 280 + (len(df_distribution) + 1) * 34), 1100)
-        components.html(html_table, height=component_height, scrolling=True)
+        st.iframe(srcdoc=html_table, height=component_height, scrolling=True)
         st.caption(
             "✅ Validación: Presupuesto Total Año = producción real acumulada hasta el mes anterior "
             "+ nuevos objetivos distribuidos en los meses mostrados."
@@ -686,6 +686,7 @@ def render_monthly_distribution_fragment(
         return df_distribution, remaining_months
 
 
+@st.cache_resource
 def _img_to_b64(path: str) -> str:
     """Carga una imagen local y la retorna como string base64 para embeber en HTML/CSS."""
     try:
@@ -1092,9 +1093,9 @@ def render_detailed_forecast_charts(
 
     col1, col2 = st.columns(2)
     with col1:
-        st.plotly_chart(fig_monthly, use_container_width=True)
+        st.plotly_chart(fig_monthly, width='stretch')
     with col2:
-        st.plotly_chart(fig_accum, use_container_width=True)
+        st.plotly_chart(fig_accum, width='stretch')
 
 
 def render_detailed_forecast_table(forecast_df: pd.DataFrame) -> None:
@@ -1131,7 +1132,7 @@ def render_detailed_forecast_table(forecast_df: pd.DataFrame) -> None:
     ]:
         display_df[col] = display_df[col].apply(fmt_cop)
 
-    st.dataframe(display_df, use_container_width=True, hide_index=True)
+    st.dataframe(display_df, width='stretch', hide_index=True)
 
 
 # ==================== VISIT COUNTER ====================
@@ -1856,7 +1857,7 @@ with tabs[1]:
             data=excel_bytes,
             file_name=f"aseguraview_{vista_label}_{periodo_actual.strftime('%Y%m')}.xlsx",
             mime="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
-            use_container_width=True,
+            width='stretch',
         )
     
     # Gráfico consolidado
@@ -1877,7 +1878,7 @@ with tabs[1]:
     col3.metric("Cierre Estimado", fmt_cop(cierre_est))
     
     fig = render_forecast_chart(hist_df, fc_df, title=f"Pronóstico {ref_year}", accuracy_df=accuracy_df)
-    st.plotly_chart(fig, use_container_width=True)
+    st.plotly_chart(fig, width='stretch')
     
     if not fc_df.empty:
         st.markdown("##### Detalle Mensual Pronóstico")
@@ -1889,7 +1890,7 @@ with tabs[1]:
         
         fc_display['Pronostico_mensual'] = fc_display['Pronostico_mensual'].apply(fmt_cop)
         fc_display = fc_display.rename(columns={'Pronostico_mensual': 'Pronóstico Mensual'})
-        st.dataframe(fc_display[['FECHA', 'Pronóstico Mensual']], use_container_width=True, hide_index=True)
+        st.dataframe(fc_display[['FECHA', 'Pronóstico Mensual']], width='stretch', hide_index=True)
     
     st.info(f"📊 SMAPE validación: {smape:.2f}%")
 
@@ -1947,7 +1948,7 @@ with tabs[1]:
             title=f"Pronóstico {linea_seleccionada} {ref_year}",
             accuracy_df=acc_sel
         )
-        st.plotly_chart(fig_individual, use_container_width=True)
+        st.plotly_chart(fig_individual, width='stretch')
 
         with st.expander("📋 Ver detalle mensual del pronóstico"):
             fc_display_sel = fc_sel.copy()
@@ -1958,7 +1959,7 @@ with tabs[1]:
             fc_display_sel = fc_display_sel.rename(columns={'Pronostico_mensual': 'Pronóstico Mensual'})
             st.dataframe(
                 fc_display_sel[['FECHA', 'Pronóstico Mensual', 'IC_lo', 'IC_hi']],
-                use_container_width=True,
+                width='stretch',
                 hide_index=True
             )
     else:
@@ -2115,7 +2116,7 @@ with tabs[1]:
                 margin=dict(l=10, r=10, t=40, b=10),
             )
 
-            st.plotly_chart(fig_suc, use_container_width=True)
+            st.plotly_chart(fig_suc, width='stretch')
             st.caption("💡 El 100% indica que la sucursal lleva el ritmo exacto para cumplir el presupuesto mensual")
         else:
             st.info("No hay datos de sucursales para mostrar con los filtros seleccionados")
@@ -2133,7 +2134,7 @@ with tabs[2]:
         
         st.markdown("#### 📅 Calendario de Impacto 2026")
         impact_df = adjuster.get_impact_summary(2026)
-        st.dataframe(impact_df, use_container_width=True, hide_index=True)
+        st.dataframe(impact_df, width='stretch', hide_index=True)
         
         with st.expander("Ver calendario visual"):
             st.code(adjuster.get_calendar_visual(2026), language=None)
@@ -2167,4 +2168,4 @@ with tabs[2]:
             })
             
             st.dataframe(fc_display_f[['FECHA', 'Pronóstico Mensual', 'Pronóstico Ajustado Garantías', 'Diferencia']], 
-                        use_container_width=True, hide_index=True)
+                        width='stretch', hide_index=True)
