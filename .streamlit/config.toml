@@ -10,7 +10,7 @@ gatherUsageStats = false
 
 [runner]
 # Evita que la app se recargue automáticamente al detectar cambios en archivos
-magicEnabled = false
+# magicEnabled fue eliminado en Streamlit 1.59 — se removió para evitar advertencias de configuración inválida
 
 [client]
 # Muestra un mensaje amigable en vez de pantalla en blanco al reconectar
