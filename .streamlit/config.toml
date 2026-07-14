@@ -1,0 +1,18 @@
+[server]
+# Tiempo máximo de inactividad antes de que la app "duerma" (en segundos)
+# 0 = nunca duerme (recomendado para apps compartidas con gerentes)
+headless = true
+enableCORS = false
+enableXsrfProtection = true
+
+[browser]
+gatherUsageStats = false
+
+[runner]
+# Evita que la app se recargue automáticamente al detectar cambios en archivos
+magicEnabled = false
+
+[client]
+# Muestra un mensaje amigable en vez de pantalla en blanco al reconectar
+showErrorDetails = false
+toolbarMode = "minimal"
