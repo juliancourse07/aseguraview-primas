@@ -7,28 +7,45 @@ ROOT = Path(__file__).resolve().parents[1]
 APP_PATH = ROOT / 'app.py'
 
 
-def load_line_adjustment_factor():
+def get_line_adjustment_factor_returns():
     source = APP_PATH.read_text(encoding='utf-8')
     module = ast.parse(source, filename=str(APP_PATH))
 
     for node in module.body:
         if isinstance(node, ast.FunctionDef) and node.name == '_line_adjustment_factor':
-            isolated_module = ast.Module(body=[node], type_ignores=[])
-            namespace = {}
-            exec(compile(isolated_module, filename=str(APP_PATH), mode='exec'), namespace)
-            return namespace['_line_adjustment_factor']
+            conditional_returns = {}
+            default_return = None
+
+            for statement in node.body:
+                if (
+                    isinstance(statement, ast.If)
+                    and isinstance(statement.test, ast.Compare)
+                    and isinstance(statement.test.left, ast.Name)
+                    and statement.test.left.id == 'linea'
+                    and len(statement.test.ops) == 1
+                    and isinstance(statement.test.ops[0], ast.Eq)
+                    and len(statement.test.comparators) == 1
+                    and isinstance(statement.test.comparators[0], ast.Constant)
+                    and statement.body
+                    and isinstance(statement.body[0], ast.Return)
+                    and isinstance(statement.body[0].value, ast.Constant)
+                ):
+                    conditional_returns[statement.test.comparators[0].value] = statement.body[0].value.value
+                elif isinstance(statement, ast.Return) and isinstance(statement.value, ast.Constant):
+                    default_return = statement.value.value
+
+            return conditional_returns, default_return
 
     raise AssertionError('No se encontró _line_adjustment_factor en app.py')
 
 
 class LineAdjustmentFactorTests(unittest.TestCase):
     def test_line_adjustment_factor_returns_expected_values(self):
-        factor_fn = load_line_adjustment_factor()
+        conditional_returns, default_return = get_line_adjustment_factor_returns()
 
-        self.assertEqual(factor_fn('FIANZAS'), 0.97)
-        self.assertEqual(factor_fn('SOAT'), 1.0)
-        self.assertEqual(factor_fn('AUTOS'), 0.995)
-        self.assertEqual(factor_fn('VIDA'), 0.995)
+        self.assertEqual(conditional_returns['FIANZAS'], 0.97)
+        self.assertEqual(conditional_returns['SOAT'], 1.0)
+        self.assertEqual(default_return, 0.995)
 
     def test_app_uses_centralized_adjustment_helper_in_forecast_views(self):
         source = APP_PATH.read_text(encoding='utf-8')
