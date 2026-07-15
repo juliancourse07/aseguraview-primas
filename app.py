@@ -310,32 +310,19 @@ def _build_branch_heatmap_data(
     # ✅ TOTAL DE PRESUPUESTO POR LÍNEA
     pres_total_por_linea = df_pres_suc.groupby('LINEA_PLUS')['PRESUPUESTO'].sum()
 
-    # ========== 3. CALCULAR MÉTRICA PROPORCIONAL POR SUCURSAL ==========
-    resultados = []
-    
-    for _, row in df_pres_suc.iterrows():
-        linea = row['LINEA_PLUS']
-        sucursal = row['Suc_agrupada']
-        presup_sucursal = row['PRESUPUESTO']
-        
-        # Obtener total de la línea y presupuesto total
-        metric_total = metric_total_por_linea.get(linea, 0.0)
-        presup_total = pres_total_por_linea.get(linea, 0.0)
-        
-        # ✅ DISTRIBUCIÓN PROPORCIONAL
-        if presup_total > 0:
-            proporcion = presup_sucursal / presup_total
-            metric_sucursal = metric_total * proporcion
-        else:
-            metric_sucursal = 0.0
-        
-        resultados.append({
-            'Suc_agrupada': sucursal,
-            'LINEA_PLUS': linea,
-            'metric_value': metric_sucursal
-        })
-    
-    df_resultado = pd.DataFrame(resultados)
+    # ========== 3. CALCULAR MÉTRICA PROPORCIONAL POR SUCURSAL (vectorizado) ==========
+    df_pres_suc = df_pres_suc.copy()
+    df_pres_suc['_presup_total'] = df_pres_suc['LINEA_PLUS'].map(pres_total_por_linea).fillna(0.0)
+    df_pres_suc['_metric_total'] = df_pres_suc['LINEA_PLUS'].map(metric_total_por_linea).fillna(0.0)
+
+    # ✅ DISTRIBUCIÓN PROPORCIONAL vectorizada
+    df_pres_suc['metric_value'] = np.where(
+        df_pres_suc['_presup_total'] > 0,
+        df_pres_suc['_metric_total'] * df_pres_suc['PRESUPUESTO'] / df_pres_suc['_presup_total'],
+        0.0
+    )
+
+    df_resultado = df_pres_suc[['Suc_agrupada', 'LINEA_PLUS', 'metric_value']].copy()
     
     if df_resultado.empty:
         return pd.DataFrame(), pd.DataFrame()
@@ -678,7 +665,7 @@ def render_monthly_distribution_fragment(
                 cutoff_date=fecha_corte,
             )
         component_height = min(max(520, 280 + (len(df_distribution) + 1) * 34), 1100)
-        st.iframe(srcdoc=html_table, height=component_height, scrolling=True)
+        components.html(html_table, height=component_height, scrolling=True)
         st.caption(
             "✅ Validación: Presupuesto Total Año = producción real acumulada hasta el mes anterior "
             "+ nuevos objetivos distribuidos en los meses mostrados."
@@ -1448,12 +1435,7 @@ with tabs[1]:
             pronostico_mes_full = fc_result['fc_valores'][0] if fc_result['fc_valores'] else 0.0
             is_partial_temp = fc_result['is_partial']
 
-            if linea == "FIANZAS":
-                pronostico_mes_full = pronostico_mes_full * 0.95
-            elif linea == "SOAT":
-                pass  # Sin ajuste
-            else:
-                pronostico_mes_full = pronostico_mes_full * 0.99
+            pronostico_mes_full = pronostico_mes_full * _line_adjustment_factor(linea)
 
             # Nowcast: ajuste dinámico usando producción parcial + proporción restante del pronóstico
             if is_partial_temp:
@@ -1549,12 +1531,7 @@ with tabs[1]:
                 fc_fechas_ts = pd.to_datetime(fc_result_anio['fc_fechas'])
                 fc_valores_list = fc_result_anio['fc_valores']
 
-                if linea == "FIANZAS":
-                    fc_valores_list = [v * 0.95 for v in fc_valores_list]
-                elif linea == "SOAT":
-                    pass  # Sin ajuste
-                else:
-                    fc_valores_list = [v * 0.99 for v in fc_valores_list]
+                fc_valores_list = [v * _line_adjustment_factor(linea) for v in fc_valores_list]
 
                 is_partial_temp = fc_result_anio['is_partial']
 
@@ -1634,12 +1611,7 @@ with tabs[1]:
             pronostico_mes_full = fc_result_acum['fc_valores'][0] if fc_result_acum['fc_valores'] else 0.0
             is_partial_temp = fc_result_acum['is_partial']
 
-            if linea == "FIANZAS":
-                pronostico_mes_full = pronostico_mes_full * 0.95
-            elif linea == "SOAT":
-                pass  # Sin ajuste
-            else:
-                pronostico_mes_full = pronostico_mes_full * 0.99
+            pronostico_mes_full = pronostico_mes_full * _line_adjustment_factor(linea)
 
             prod_meses_cerrados= df_linea[
                 (df_linea['FECHA'].dt.year == ref_year) &
@@ -1867,8 +1839,8 @@ with tabs[1]:
     prod_total = float(serie_clean.sum())
     proy_total = float(fc_df['Pronostico_mensual'].sum()) if not fc_df.empty else 0.0
     
-    if filters['linea_plus'] == "FIANZAS":
-        proy_total = proy_total * 0.95
+    if filters['linea_plus'] != "TODAS":
+        proy_total = proy_total * _line_adjustment_factor(filters['linea_plus'])
     
     cierre_est = prod_total + proy_total
     
@@ -1885,8 +1857,8 @@ with tabs[1]:
         fc_display = fc_df.copy()
         fc_display['FECHA'] = fc_display['FECHA'].dt.strftime('%b-%Y')
         
-        if filters['linea_plus'] == "FIANZAS":
-            fc_display['Pronostico_mensual'] = fc_display['Pronostico_mensual'] * 0.95
+        if filters['linea_plus'] != "TODAS":
+            fc_display['Pronostico_mensual'] = fc_display['Pronostico_mensual'] * _line_adjustment_factor(filters['linea_plus'])
         
         fc_display['Pronostico_mensual'] = fc_display['Pronostico_mensual'].apply(fmt_cop)
         fc_display = fc_display.rename(columns={'Pronostico_mensual': 'Pronóstico Mensual'})
@@ -1917,19 +1889,13 @@ with tabs[1]:
 
         hist_sel, fc_sel, smape_sel, acc_sel = engine_sel.fit_forecast(serie_train_sel, steps=12)
 
-        # Aplicar ajustes específicos por línea (NO MODIFICAR ESTA LÓGICA)
-        if linea_seleccionada == "FIANZAS":
+        # Aplicar ajustes específicos por línea
+        factor_sel = _line_adjustment_factor(linea_seleccionada)
+        if factor_sel != 1.0:
             fc_sel = fc_sel.copy()
-            fc_sel['Pronostico_mensual'] = fc_sel['Pronostico_mensual'] * 0.95
-            fc_sel['IC_lo'] = fc_sel['IC_lo'] * 0.95
-            fc_sel['IC_hi'] = fc_sel['IC_hi'] * 0.95
-        elif linea_seleccionada == "SOAT":
-            pass  # Sin ajuste
-        else:
-            fc_sel = fc_sel.copy()
-            fc_sel['Pronostico_mensual'] = fc_sel['Pronostico_mensual'] * 0.99
-            fc_sel['IC_lo'] = fc_sel['IC_lo'] * 0.99
-            fc_sel['IC_hi'] = fc_sel['IC_hi'] * 0.99
+            fc_sel[['Pronostico_mensual', 'IC_lo', 'IC_hi']] = (
+                fc_sel[['Pronostico_mensual', 'IC_lo', 'IC_hi']] * factor_sel
+            )
 
         # Métricas en columnas
         col1, col2, col3, col4 = st.columns(4)
