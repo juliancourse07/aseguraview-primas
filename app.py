@@ -791,16 +791,16 @@ def fmt_cop_short(value: float) -> str:
 def _line_adjustment_factor(linea: str) -> float:
     """Retorna el factor de ajuste conservador por línea de negocio.
 
-    Ajustes conservadores originales (restaurados):
-    - FIANZAS: 0.95 (-5.0%)
+    Ajustes conservadores:
+    - FIANZAS: 0.97 (-3.0%)
     - SOAT: 1.0 (0%)
-    - Otras líneas: 0.99 (-1.0%)
+    - Otras líneas: 0.995 (-0.5%)
     """
     if linea == "FIANZAS":
-        return 0.95
+        return 0.97
     if linea == "SOAT":
         return 1.0
-    return 0.99
+    return 0.995
 
 
 def _compute_single_line_detailed_forecast(
