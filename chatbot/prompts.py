@@ -23,7 +23,7 @@ DATOS ACTUALES DEL DASHBOARD:
 CONTEXTO DEL MODELO:
 - Los pronósticos usan modelos SARIMAX/ARIMA con ajuste conservador
 - Ajuste conservador actual: {ajuste_conservador:.1f}%
-- FIANZAS tiene ajuste especial ×0.95 por Ley de Garantías
+- FIANZAS usa ajuste conservador por línea ×0.97 (-3.0%) y puede tener ajuste adicional por Ley de Garantías
 - El nowcast combina producción real + proyección proporcional restante
 
 Responde siempre en español con formato Markdown y emojis relevantes.
