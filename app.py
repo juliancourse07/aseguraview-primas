@@ -311,7 +311,6 @@ def _build_branch_heatmap_data(
     pres_total_por_linea = df_pres_suc.groupby('LINEA_PLUS')['PRESUPUESTO'].sum()
 
     # ========== 3. CALCULAR MÉTRICA PROPORCIONAL POR SUCURSAL (vectorizado) ==========
-    df_pres_suc = df_pres_suc.copy()
     df_pres_suc['_presup_total'] = df_pres_suc['LINEA_PLUS'].map(pres_total_por_linea).fillna(0.0)
     df_pres_suc['_metric_total'] = df_pres_suc['LINEA_PLUS'].map(metric_total_por_linea).fillna(0.0)
 
@@ -323,6 +322,7 @@ def _build_branch_heatmap_data(
     )
 
     df_resultado = df_pres_suc[['Suc_agrupada', 'LINEA_PLUS', 'metric_value']].copy()
+    df_pres_suc.drop(columns=['_presup_total', '_metric_total', 'metric_value'], inplace=True)
     
     if df_resultado.empty:
         return pd.DataFrame(), pd.DataFrame()
